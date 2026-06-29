@@ -3,6 +3,7 @@ package web
 import (
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -94,6 +95,11 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		Email:    req.Email,
 		Password: req.Password,
 	})
+
+	if errors.Is(err, service.ErrUserDuplicated) {
+		ctx.String(http.StatusOK, "邮箱重复，请换一个！")
+		return
+	}
 
 	if err != nil {
 		ctx.String(http.StatusOK, "系统错误")

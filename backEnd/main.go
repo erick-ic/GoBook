@@ -15,26 +15,16 @@ import (
 )
 
 func main() {
-	//数据库连接
-	dsn := "root:root@tcp(localhost:13316)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err := gorm.Open(mysql.Open(dsn))
-	if err != nil {
-		//一旦初始化过程报错，应用就取消启动
-		//panic相当于整个goroutine结束
-		panic(err)
-	}
+	db := initDB()
+	server := initWebServer()
 
-	//自动初始化表
-	err = dao.InitTable(db)
-	if err != nil {
-		panic(err)
-	}
+	u := initUser(db)
+	u.RegisterUsersRouters(server)
 
-	ud := dao.NewUserDAO(db)
-	repo := repository.NewUserRepository(ud)
-	svc := service.NewUserService(repo)
-	u := web.NewUserHandler(svc)
+	server.Run(":8080")
+}
 
+func initWebServer() *gin.Engine {
 	server := gin.Default()
 	server.Use(cors.New(cors.Config{
 		//prelight接口请求中，origin:http://localhost:3000
@@ -63,8 +53,31 @@ func main() {
 
 		MaxAge: 12 * time.Hour,
 	}))
+	return server
+}
 
-	u.RegisterUsersRouters(server)
+func initUser(db *gorm.DB) *web.UserHandler {
+	ud := dao.NewUserDAO(db)
+	repo := repository.NewUserRepository(ud)
+	svc := service.NewUserService(repo)
+	u := web.NewUserHandler(svc)
+	return u
+}
 
-	server.Run(":8080")
+func initDB() *gorm.DB {
+	//数据库连接
+	dsn := "root:root@tcp(localhost:13316)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
+	db, err := gorm.Open(mysql.Open(dsn))
+	if err != nil {
+		//一旦初始化过程报错，应用就取消启动
+		//panic相当于整个goroutine结束
+		panic(err)
+	}
+
+	//自动初始化表
+	err = dao.InitTable(db)
+	if err != nil {
+		panic(err)
+	}
+	return db
 }
