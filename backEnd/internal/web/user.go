@@ -1,11 +1,12 @@
-package user
+package web
 
 import (
+	"GoBook/internal/domain"
+	"GoBook/internal/service"
 	"fmt"
 	"net/http"
 
 	regexp "github.com/dlclark/regexp2"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,16 +19,28 @@ const (
 type UserHandler struct {
 	emailRegex    *regexp.Regexp
 	passwordRegex *regexp.Regexp
+	svc           *service.UserService
 }
 
-func NewUserHandler() *UserHandler {
+func NewUserHandler(svc *service.UserService) *UserHandler {
 	emailExp := regexp.MustCompile(emailRegexPattern, regexp.None)
 	passwordExp := regexp.MustCompile(passwordRegexPattern, regexp.None)
 
 	return &UserHandler{
+		svc:           svc,
 		emailRegex:    emailExp,
 		passwordRegex: passwordExp,
 	}
+}
+
+func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
+	ug := server.Group("/v1/users")
+	ug.POST("/signUp", uh.SignUp)
+	ug.POST("/login", uh.Login)
+	ug.POST("/create", uh.Create)
+	ug.POST("/delete", uh.Delete)
+	ug.POST("/edit", uh.Edit)
+	ug.GET("/profile", uh.Profile)
 }
 
 // SignUp 注册
@@ -77,8 +90,19 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		return
 	}
 
+	err = u.svc.SignUp(ctx, domain.User{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+
+	if err != nil {
+		ctx.String(http.StatusOK, "系统错误")
+		return
+	}
+
 	ctx.String(http.StatusOK, "SignUp success~")
 	fmt.Printf("req:%v \n", req)
+
 }
 
 // Login 登录
