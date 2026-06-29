@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	regexp "github.com/dlclark/regexp2"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -45,7 +46,7 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 }
 
 // SignUp 注册
-func (u *UserHandler) SignUp(ctx *gin.Context) {
+func (uh *UserHandler) SignUp(ctx *gin.Context) {
 	//请求参数结构体
 	type SignUpReq struct {
 		Email           string `json:"email"`
@@ -62,7 +63,7 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		return
 	}
 
-	isEmail, err := u.emailRegex.MatchString(req.Email)
+	isEmail, err := uh.emailRegex.MatchString(req.Email)
 	//系统内部错误
 	if err != nil {
 		ctx.String(http.StatusOK, "系统错误")
@@ -79,7 +80,7 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		return
 	}
 
-	isPassword, err := u.passwordRegex.MatchString(req.Password)
+	isPassword, err := uh.passwordRegex.MatchString(req.Password)
 	if err != nil {
 		//写入日志
 		ctx.JSON(http.StatusOK, "系统错误")
@@ -91,7 +92,7 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		return
 	}
 
-	err = u.svc.SignUp(ctx, domain.User{
+	err = uh.svc.SignUp(ctx, domain.User{
 		Email:    req.Email,
 		Password: req.Password,
 	})
@@ -112,8 +113,34 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 }
 
 // Login 登录
-func (u *UserHandler) Login(ctx *gin.Context) {
+func (uh *UserHandler) Login(ctx *gin.Context) {
+	type LoginReq struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	var req LoginReq
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+
+	u, err := uh.svc.Login(ctx, req.Email, req.Password)
+	if errors.Is(err, service.ErrInvalidUserPassword) {
+		ctx.String(http.StatusOK, "账号/邮箱或密码错误！")
+		return
+	}
+
+	if err != nil {
+		ctx.String(http.StatusOK, "系统错误！")
+		return
+	}
+
+	//登录成功
+	//步骤2: 设置session
+	sess := sessions.Default(ctx)
+	sess.Set("userId", u.Id)
+	sess.Save()
 	ctx.String(http.StatusOK, "LoginSuccess~")
+	return
 }
 
 // Create 创建

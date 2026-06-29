@@ -5,10 +5,13 @@ import (
 	"GoBook/internal/repository/dao"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
+	"GoBook/internal/web/middleware"
 	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -31,7 +34,7 @@ func initWebServer() *gin.Engine {
 		//AllowOrigins: []string{"http://localhost:3000"},
 
 		//access-control-request-method：POST
-		AllowMethods: []string{"POST"},
+		AllowMethods: []string{"POST", "GET", "PUT", "DELETE"},
 
 		//access-control-request-headers:authorization,content-type
 		//大小写都行
@@ -53,6 +56,19 @@ func initWebServer() *gin.Engine {
 
 		MaxAge: 12 * time.Hour,
 	}))
+
+	//步骤1:
+	//数据存放在store
+	store := cookie.NewStore([]byte("secret"))
+	server.Use(sessions.Sessions("mysession", store))
+	//步骤3: 登录校验
+	server.Use(
+		middleware.NewLoginMiddlewareBuilder().
+			IgnoreLoginMiddlewareBuilder("/v1/users/login").
+			IgnoreLoginMiddlewareBuilder("/v1/users/signup").
+			Build(),
+	)
+
 	return server
 }
 

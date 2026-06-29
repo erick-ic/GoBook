@@ -4,11 +4,17 @@ import (
 	"GoBook/internal/domain"
 	"GoBook/internal/repository"
 	"context"
+	"errors"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
-var ErrUserDuplicated = repository.ErrUserDuplicated
+var (
+	ErrUserDuplicated      = repository.ErrUserDuplicated
+	ErrUserNotFund         = repository.ErrUserNotFound
+	ErrInvalidUserPassword = errors.New("账号/邮箱或密码不对")
+)
 
 type UserService struct {
 	repo *repository.UserRepository
@@ -30,4 +36,23 @@ func (us *UserService) SignUp(ctx context.Context, u domain.User) error {
 
 	//存储
 	return us.repo.Create(ctx, u)
+}
+
+func (us *UserService) Login(ctx context.Context, email, password string) (domain.User, error) {
+	//找到目标用户
+	u, err := us.repo.FindByEmail(ctx, email)
+	//未找到用户
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return domain.User{}, ErrUserNotFund
+	}
+	if err != nil {
+		return domain.User{}, err
+	}
+	//比较密码
+	err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
+	if err != nil {
+		//密码错误，写入日志
+		return domain.User{}, ErrInvalidUserPassword
+	}
+	return u, nil
 }
