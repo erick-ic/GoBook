@@ -10,6 +10,7 @@ import (
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -36,8 +37,8 @@ func NewUserHandler(svc *service.UserService) *UserHandler {
 }
 
 func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
-	ug := server.Group("/v1/users")
-	ug.POST("/signUp", uh.SignUp)
+	ug := server.Group("/users")
+	ug.POST("/signup", uh.SignUp)
 	ug.POST("/login", uh.Login)
 	ug.POST("/create", uh.Create)
 	ug.POST("/delete", uh.Delete)
@@ -129,18 +130,40 @@ func (uh *UserHandler) Login(ctx *gin.Context) {
 		return
 	}
 
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		ctx.String(http.StatusOK, "用户不存在")
+		return
+	}
 	if err != nil {
 		ctx.String(http.StatusOK, "系统错误！")
 		return
 	}
 
 	//登录成功
-	//步骤2: 设置session
+	//步骤2: 设置session，session初始化
 	sess := sessions.Default(ctx)
 	sess.Set("userId", u.Id)
+	sess.Options(sessions.Options{
+		//生产环境设置
+		//Secure: true, 仅限https请求
+		//HttpOnly: true,
+
+		//cookie有效期是固定的
+		MaxAge: 30, //单位秒
+	})
 	sess.Save()
 	ctx.String(http.StatusOK, "LoginSuccess~")
 	return
+
+}
+func (u *UserHandler) Logout(ctx *gin.Context) {
+	sess := sessions.Default(ctx)
+	sess.Options(sessions.Options{
+		//设置cookie有效期，即删除当前用户的cookie
+		MaxAge: -1,
+	})
+	sess.Save()
+	ctx.String(http.StatusOK, "LogoutSuccess~")
 }
 
 // Create 创建
@@ -160,5 +183,5 @@ func (u *UserHandler) Edit(ctx *gin.Context) {
 
 // Profile 查看
 func (u *UserHandler) Profile(ctx *gin.Context) {
-	ctx.String(http.StatusOK, "ProfileSuccess~")
+	ctx.String(http.StatusOK, "this is profile~")
 }
