@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
@@ -115,6 +116,13 @@ func (uh *UserHandler) SignUp(ctx *gin.Context) {
 
 }
 
+type UserClaims struct {
+	//继承RegisteredClaims，实现claims
+	jwt.RegisteredClaims
+	//放入token的数据
+	Uid int64
+}
+
 // LoginJWT 登录
 func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	type LoginReq struct {
@@ -143,7 +151,19 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 
 	//登录成功
 	//生成token
-	token := jwt.New(jwt.SigningMethodHS512)
+
+	//token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+	//	"userId": u.Id,
+	//})
+	claims := UserClaims{
+		//设置token有效期
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+		},
+		Uid: u.Id,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
 	//随机生成32位key 95osj3fUD7fo0mlYdDbncXz4VD2igvf0
 	tokenStr, err := token.SignedString([]byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"))
 	if err != nil {
@@ -231,6 +251,19 @@ func (u *UserHandler) Edit(ctx *gin.Context) {
 }
 
 // Profile 查看
+//
+//	func (u *UserHandler) Profile(ctx *gin.Context) {
+//		ctx.String(http.StatusOK, "this is profile~")
+//	}
 func (u *UserHandler) Profile(ctx *gin.Context) {
+	v, ok := ctx.Get("claims")
+	if !ok {
+		ctx.String(http.StatusOK, "系统错误")
+	}
+	claims, ok := v.(*UserClaims)
+	if !ok {
+		ctx.String(http.StatusOK, "系统错误")
+	}
+	fmt.Println("claims:", claims)
 	ctx.String(http.StatusOK, "this is profile~")
 }

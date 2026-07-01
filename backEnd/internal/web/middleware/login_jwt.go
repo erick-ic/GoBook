@@ -1,9 +1,12 @@
 package middleware
 
 import (
+	"GoBook/internal/web"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -51,7 +54,12 @@ func (ljb *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 		}
 
 		tokenStr := segs[1]
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		//token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		//	return []byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"), nil
+		//})
+		claims := &web.UserClaims{}
+		//ParseWithClaims需要传入指针
+		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"), nil
 		})
 		if err != nil {
@@ -59,10 +67,25 @@ func (ljb *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		if token == nil || !token.Valid {
+		if token == nil || !token.Valid || claims.Uid == 0 {
 			//未登录
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+		//刷新token
+		//有效期1分钟，目前不足50秒，刷新token，即每10秒刷新一次
+		if claims.ExpiresAt.Sub(time.Now()) < time.Second*50 {
+			claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Minute))
+			tokenStr, err = token.SignedString([]byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"))
+			if err != nil {
+				//记录日志
+				log.Println("jwt 续约失败:", err)
+			}
+			ctx.Header("x-jwt-token", tokenStr)
+		}
+
+		//可在ctx中传递数据，进行读写操作。
+		ctx.Set("claims", claims)
+		ctx.Set("userId", claims.Uid)
 	}
 }
