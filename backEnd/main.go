@@ -41,7 +41,8 @@ func initWebServer() *gin.Engine {
 		//大小写都行
 		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 
-		//ExposeHeaders: []string{"X-Total-Count", "X-JWT-Token"},
+		//暴露给客户端
+		ExposeHeaders: []string{"X-Total-Count", "X-JWT-Token"},
 
 		//是否允许携带cookie
 		AllowCredentials: true,
@@ -89,13 +90,17 @@ func initWebServer() *gin.Engine {
 
 	server.Use(sessions.Sessions("mysession", store))
 	//步骤3: 登录校验
-	server.Use(
-		middleware.NewLoginMiddlewareBuilder().
-			IgnoreLoginMiddlewareBuilder("/users/login").
-			IgnoreLoginMiddlewareBuilder("/users/signup").
-			Build(),
-	)
+	//server.Use(
+	//	middleware.NewLoginMiddlewareBuilder().
+	//		IgnoreLoginMiddlewareBuilder("/users/login").
+	//		IgnoreLoginMiddlewareBuilder("/users/signup").
+	//		Build(),
+	//)
 
+	server.Use(middleware.NewLoginJWTMiddlewareBuilder().
+		IgnorePaths("/users/login").
+		IgnorePaths("/users/signup").
+		Build())
 	return server
 }
 
