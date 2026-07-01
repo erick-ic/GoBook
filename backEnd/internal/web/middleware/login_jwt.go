@@ -72,6 +72,14 @@ func (ljb *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+
+		//检验UserAgent
+		if claims.UserAgent != ctx.Request.UserAgent() {
+			//严重的安全问题，使用了不同的设备环境
+			ctx.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+
 		//刷新token
 		//有效期1分钟，目前不足50秒，刷新token，即每10秒刷新一次
 		if claims.ExpiresAt.Sub(time.Now()) < time.Second*50 {

@@ -88,6 +88,14 @@ func initWebServer() *gin.Engine {
 		[]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
 		[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
 
+	////d.限流，一秒钟100次
+	//redisClient := redis.NewClient(&redis.Options{
+	//	Addr: "localhost:6379",
+	//})
+	//server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
+	//store := memstore.NewStore([]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
+	//	[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
+	//
 	server.Use(sessions.Sessions("mysession", store))
 	//步骤3: 登录校验
 	//server.Use(

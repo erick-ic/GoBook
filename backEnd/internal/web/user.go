@@ -120,7 +120,8 @@ type UserClaims struct {
 	//继承RegisteredClaims，实现claims
 	jwt.RegisteredClaims
 	//放入token的数据
-	Uid int64
+	Uid       int64
+	UserAgent string
 }
 
 // LoginJWT 登录
@@ -160,7 +161,8 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
 		},
-		Uid: u.Id,
+		Uid:       u.Id,
+		UserAgent: ctx.Request.UserAgent(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
