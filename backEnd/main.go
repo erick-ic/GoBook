@@ -1,13 +1,13 @@
 package main
 
 import (
+	"GoBook/config"
 	"GoBook/internal/repository"
 	"GoBook/internal/repository/dao"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
 	"GoBook/internal/web/middleware"
 	"GoBook/pkg/ginx/middleware/ratelimit"
-	"net/http"
 	"strings"
 	"time"
 
@@ -27,11 +27,7 @@ func main() {
 	u := initUser(db)
 	u.RegisterUsersRouters(server)
 
-	server.GET("/hello", func(ctx *gin.Context) {
-		ctx.String(http.StatusOK, "hello world1")
-	})
 	server.Run(":8080")
-
 }
 
 func initWebServer() *gin.Engine {
@@ -40,7 +36,8 @@ func initWebServer() *gin.Engine {
 	//d. 限流方式，一秒钟100次
 	redisClient := redis.NewClient(&redis.Options{
 		//Addr: "localhost:6379",
-		Addr: "gobook-redis:11479",
+		//Addr: "gobook-redis:11479",
+		Addr: config.Config.Redis.Addr,
 	})
 	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
 
@@ -132,7 +129,8 @@ func initUser(db *gorm.DB) *web.UserHandler {
 func initDB() *gorm.DB {
 	//数据库连接
 	//dsn := "root:root@tcp(localhost:13316)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
-	dsn := "root:root@tcp(gobook-mysql:11309)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
+	//dsn := "root:root@tcp(gobook-mysql:11309)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := config.Config.DB.DSN
 	db, err := gorm.Open(mysql.Open(dsn))
 	if err != nil {
 		//一旦初始化过程报错，应用就取消启动
