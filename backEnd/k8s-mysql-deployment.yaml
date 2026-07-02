@@ -1,0 +1,73 @@
+# 1. 指定 API 版本
+# apps/v1 是 Deployment 资源的稳定版 API 接口。
+apiVersion: apps/v1
+
+# 2. 定义资源类型：Deployment（部署）
+# 用于管理无状态应用的 Pod 生命周期，但 MySQL 其实是有状态的。
+# （此处为了学习简单使用 Deployment，生产环境通常用 StatefulSet）
+kind: Deployment
+
+# 3. 元数据（描述 Deployment 自身的信息）
+metadata:
+  # Deployment 的名称，后续可通过该名字查询或管理
+  name: gobook-mysql
+  # Deployment 自身的标签（方便筛选和管理）
+  labels:
+    app: gobook-mysql
+
+# 4. 规格说明（期望状态）
+spec:
+  # 副本数量：MySQL 只跑 1 个实例（主从复制才能多副本）
+  replicas: 1
+
+  # 选择器：Deployment 通过标签来识别自己管辖的 Pod
+  selector:
+    matchLabels:
+      # 必须匹配下面 Pod 模板中定义的标签
+      app: gobook-mysql
+
+  # Pod 模板：定义新 Pod 的详细配置
+  template:
+    metadata:
+      # Pod 的名称（实际创建时会自动加随机后缀）
+      name: gobook-mysql
+      # Pod 的标签（身份标识）
+      labels:
+        app: gobook-mysql
+
+    # Pod 内部容器配置
+    spec:
+      # 容器列表（当前只有一个 MySQL 容器）
+      containers:
+        - name: gobook-mysql
+          # 使用 MySQL 8.0 官方镜像
+          image: mysql:8.0
+
+          # 环境变量：向容器传递配置参数
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              # 设置 MySQL root 用户的密码为 "root"
+              # 警告：明文密码不安全，生产环境请用 Secret（密钥对象）
+              value: root
+
+          # 镜像拉取策略：IfNotPresent（如果本地已存在，则不重复拉取）
+          imagePullPolicy: IfNotPresent
+
+          # 卷挂载：将存储卷挂载到容器的指定目录
+          volumeMounts:
+            - mountPath: /var/lib/mysql  # 容器内的挂载点（MySQL 的数据目录）
+              name: mysql-storage        # 对应下面 volumes 中定义的卷名称
+
+          # 容器端口声明
+          ports:
+            - containerPort: 3306   # MySQL 默认端口
+              protocol: TCP         # 使用 TCP 协议
+
+      # Pod 重启策略：Always（无论因何退出，都会自动重启）
+      restartPolicy: Always
+
+      # 存储卷定义：在 Pod 级别声明需要使用的存储资源
+      volumes:
+        - name: mysql-storage  # 卷的名称，需与 volumeMounts 中的 name 一致
+          persistentVolumeClaim:
+            claimName: my-local-pvc  # 引用上面定义的 PVC 名称

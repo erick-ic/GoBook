@@ -1,0 +1,33 @@
+# 1. API 版本
+apiVersion: v1
+
+# 2. 资源类型：PersistentVolume（持久卷）
+# 这是由集群管理员预先准备好的一块存储。
+kind: PersistentVolume
+
+# 3. 元数据
+metadata:
+  # PV 的名称
+  name: my-local-pv
+  # 标签，方便 PVC 通过 selector 进行匹配绑定
+  labels:
+    type: local
+
+# 4. 规格说明（定义存储的具体属性）
+spec:
+  # 存储类名称：需要与 PVC 中的一致，用于匹配
+  storageClassName: demo
+
+  # 存储容量：定义这个 PV 有多大
+  capacity:
+    storage: 1Gi
+
+  # 访问模式：定义存储的访问权限
+  accessModes:
+    - ReadWriteOnce
+
+  # 存储卷的具体类型和路径
+  # hostPath 仅适用于单节点集群的开发和测试[reference:1][reference:2]
+  hostPath:
+    # 宿主机上的具体路径
+    path: "/Volumes/live"

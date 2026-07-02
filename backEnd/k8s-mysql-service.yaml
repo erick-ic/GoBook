@@ -1,0 +1,33 @@
+# 1. API 版本
+# Service 资源的稳定版 API 接口。
+apiVersion: v1
+
+# 2. 定义资源类型：Service（服务）
+# 用于给 Pods 提供一个固定的网络访问入口。
+kind: Service
+
+# 3. 元数据
+metadata:
+  # Service 的名称，集群内部可通过 "gobook-mysql" 访问该服务
+  name: gobook-mysql
+
+# 4. 规格说明
+spec:
+  # 选择器：流量转发目标
+  # 只转发给带有 app: gobook-mysql 标签的 Pods
+  selector:
+    app: gobook-mysql
+
+  # 端口映射配置
+  ports:
+    - protocol: TCP       # 协议类型
+      # 外部访问端口（Service 监听的端口）
+      # 注意：这里设置成了 11309，你也可以改成其他未被占用的端口
+      port: 11309
+      # 目标 Pod 容器内部监听的端口（MySQL 默认 3306）
+      targetPort: 3306
+
+  # 服务类型：LoadBalancer
+  # - 在云环境会自动创建公网 IP 的负载均衡器
+  # - 在本地环境（如 Docker Desktop）会处于 Pending 状态，需用 port-forward 或 tunnel 访问
+  type: LoadBalancer

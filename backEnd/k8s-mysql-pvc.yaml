@@ -1,0 +1,24 @@
+# 1. API 版本
+apiVersion: v1
+
+# 2. 资源类型：PersistentVolumeClaim（持久卷声明）
+kind: PersistentVolumeClaim
+
+# 3. 元数据
+metadata:
+  # PVC 的名称
+  name: my-local-pvc
+
+# 4. 规格说明（提出存储需求）
+spec:
+  # 存储类名称：必须与 PV 中的一致
+  storageClassName: demo
+
+  # 访问模式：必须与 PV 中的一致
+  accessModes:
+    - ReadWriteOnce
+
+  # 资源请求：向集群申请的具体存储容量
+  resources:
+    requests:
+      storage: 1Gi
