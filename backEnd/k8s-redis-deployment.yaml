@@ -1,0 +1,54 @@
+# 1. API 版本
+# apps/v1 是 Deployment 资源的稳定版 API 接口
+apiVersion: apps/v1
+
+# 2. 资源类型：Deployment（部署）
+# 用于管理 Redis 缓存服务的 Pod 生命周期
+kind: Deployment
+
+# 3. 元数据（描述 Deployment 自身的信息）
+metadata:
+  # Deployment 的名称，集群内可通过该名称管理
+  name: gobook-redis
+  # Deployment 自身的标签（方便筛选和管理）
+  labels:
+    app: gobook-redis
+
+# 4. 规格说明（期望状态）
+spec:
+  # 副本数量：Redis 单机模式，只跑 1 个实例
+  # 注意：Redis 集群模式需要 StatefulSet + 多个副本
+  replicas: 1
+
+  # 选择器：Deployment 通过标签来识别自己管辖的 Pod
+  selector:
+    matchLabels:
+      # 必须匹配下面 Pod 模板中定义的标签
+      app: gobook-redis
+
+  # Pod 模板：定义新 Pod 的详细配置
+  template:
+    metadata:
+      # Pod 的名称（实际创建时会自动加随机后缀）
+      name: gobook-redis
+      # Pod 的标签（身份标识）
+      labels:
+        app: gobook-redis
+
+    # Pod 内部容器配置
+    spec:
+      # 容器列表（当前只有一个 Redis 容器）
+      containers:
+        - name: gobook-redis
+          # 使用固定版本号，避免 latest 带来的版本漂移风险
+          # 推荐使用 alpine 版本（体积小）或指定具体版本如 7.2.4
+          image: redis:7.2-alpine
+
+          # 镜像拉取策略：IfNotPresent（本地有则优先使用）
+          imagePullPolicy: IfNotPresent
+#          ports:
+#            - containerPort: 6379   # Redis 默认端口
+#              protocol: TCP          # 使用 TCP 协议
+
+      # Pod 重启策略：Always（默认值，无论因何退出都会自动重启）
+      restartPolicy: Always

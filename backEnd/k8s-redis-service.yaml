@@ -1,0 +1,22 @@
+# 1. API 版本
+apiVersion: v1
+
+# 2. 资源类型：Service
+kind: Service
+
+# 3. 元数据
+metadata:
+  name: gobook-redis          # Service 名称，集群内 DNS 为 gobook-redis
+
+# 4. 规格说明
+spec:
+  selector:
+    app: gobook-redis          # 将流量转发给带有此标签的 Pod
+
+  ports:
+    - protocol: TCP
+      port: 11479              # Service 外部监听端口
+      targetPort: 6379         # ✅ 正确：Redis 容器内部实际监听 6379
+      nodePort: 30003          # 指定 NodePort 端口（30000-32767 范围）
+      
+  type: NodePort               # 类型：通过集群节点的 IP + 30003 端口访问
