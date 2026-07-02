@@ -47,7 +47,7 @@ spec:
         - name: gobook          # 容器的名称
           # 容器镜像：就是我们之前用 Makefile 构建并打上 tag 的那个镜像
           # K8s 会从 Docker Hub（或其他仓库）拉取 flycash/gobook:v0.0.1
-          image: flycash/gobook:v0.0.1
+          image: flycash/gobook:v0.0.2
           # 容器端口
           ports:
             - containerPort: 8080  # 容器内的应用程序监听 8080 端口
