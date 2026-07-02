@@ -1,0 +1,50 @@
+# 1. API 版本
+# networking.k8s.io/v1 是 Kubernetes Ingress 资源的稳定版 API
+# 用于定义七层（HTTP/HTTPS）路由规则
+apiVersion: networking.k8s.io/v1
+
+# 2. 资源类型：Ingress（入口）
+# Ingress 是 K8s 中专门负责“外部流量进入集群”的路由器
+# 它根据域名和路径，将请求转发给对应的 Service
+kind: Ingress
+
+# 3. 元数据
+metadata:
+  # Ingress 的名称，集群内唯一标识
+  name: gobook-ingress
+
+# 4. 规格说明（路由规则）
+spec:
+  # 指定使用的 Ingress Controller（入口控制器）类型
+  # 这里使用 nginx，意味着集群中必须已经部署了 nginx-ingress-controller
+  # 常见的还有：traefik、haproxy、aws-alb 等
+  ingressClassName: nginx
+
+  # 路由规则列表（可以配置多个域名/路径）
+  rules:
+    # 规则1：匹配域名 localhost
+    # 注意：在生产环境中这里通常是真实域名，如 api.example.com
+    - host: localhost
+
+      # HTTP 路由配置
+      http:
+        # 路径匹配列表（按顺序匹配，第一个匹配到的生效）
+        paths:
+          # 路径规则1：匹配根路径 "/"
+          - path: /
+            # 路径类型：Prefix（前缀匹配）
+            # 意味着所有以 "/" 开头的请求都会匹配（即所有请求）
+            # 其他可选值：Exact（精确匹配）、ImplementationSpecific（由 Controller 决定）
+            pathType: Prefix
+
+            # 后端服务配置：当匹配成功后，流量转发到哪里
+            backend:
+              service:
+                # 目标 Service 名称：gobook
+                # 这个 Service 必须已在集群中存在（对应你的 k8s-gobook-service.yaml）
+                name: gobook
+                port:
+                  # Service 的端口号：80
+                  # 注意：这里的端口是 Service 的 port（即 service.yaml 中定义的 port）
+                  # 而不是 Pod 的 targetPort（8080）
+                  number: 80
