@@ -1,0 +1,55 @@
+# 1. 指定 API 版本
+# apps/v1 是 Kubernetes 中 Deployment 资源的稳定版 API 接口。
+apiVersion: apps/v1
+
+# 2. 定义资源类型
+# 指定我们要创建的是一个 Deployment（部署），用于管理无状态 Pod 的生命周期。
+kind: Deployment
+
+# 3. 元数据（Metadata）
+# 用于描述该 Deployment 资源本身的信息。
+metadata:
+  # Deployment 的名称，后续可通过该名字查询或管理这个部署
+  name: gobook
+
+# 4. 规格说明（Spec）
+# 定义 Deployment 期望达到的目标状态
+spec:
+  # 副本数量：指定需要运行的 Pod 实例数量
+  # 这里设为 3，意味着 K8s 会始终确保集群中有 3 个 gobook Pod 在运行
+  replicas: 3
+
+  # 选择器（Selector）
+  # 这是 Deployment 管理 Pod 的“身份标签匹配规则”。
+  # Deployment 通过它来识别哪些 Pod 归自己管辖。
+  selector:
+    matchLabels:
+      # 必须匹配下面 Pod 模板中定义的 app: gobook 标签
+      app: gobook
+
+  # Pod 模板（Template）
+  # 这是最关键的部分：定义了当需要创建新的 Pod 时，Pod 长什么样。
+  # 当 Deployment 更新、扩容或重建 Pod 时，都依据这个模板来生成。
+  template:
+    # Pod 的元数据
+    metadata:
+      # Pod 的名称（注意：实际创建时，Deployment 会在后面自动加随机后缀，如 gobook-7d8f9）
+      name: gobook
+      # 标签（Labels）：Pod 的身份标识
+      # 必须与上面的 selector.matchLabels 完全一致，否则 K8s 会报错
+      labels:
+        app: gobook
+
+    # Pod 的具体规格（容器配置）
+    spec:
+      # 容器列表（Pod 里可以跑多个容器，这里只有一个）
+      containers:
+        - name: gobook          # 容器的名称
+          # 容器镜像：就是我们之前用 Makefile 构建并打上 tag 的那个镜像
+          # K8s 会从 Docker Hub（或其他仓库）拉取 flycash/gobook:v0.0.1
+          image: flycash/gobook:v0.0.1
+          # 容器端口
+          ports:
+            - containerPort: 8080  # 容器内的应用程序监听 8080 端口
+            # 注意：这个端口声明主要是“文档说明”，方便阅读。
+            # 它并不会自动对外暴露服务，具体外部访问需要再创建 Service。

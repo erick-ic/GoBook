@@ -1,0 +1,31 @@
+# 1. API 版本
+# Service 的核心稳定版 API 接口。
+apiVersion: v1
+
+# 2. 资源类型
+# 定义这是一个 Service（服务）。
+kind: Service
+
+# 3. 元数据
+metadata:
+  # Service 的名字，在集群内部可通过 "gobook" 访问到这个服务。
+  name: gobook
+
+# 4. 规格说明（核心配置）
+spec:
+  # 服务类型：LoadBalancer（负载均衡器）
+  # 这是 K8s 对外暴露服务的“终极手段”。
+  type: LoadBalancer
+
+  # 选择器（这是最关键的一环！）
+  # Service 不会直接把流量发给某个固定的 Pod，而是通过标签来“筛选”。
+  # 它只会把流量转发给带有 app: gobook 标签的 Pods。
+  # 注意：这个标签必须完全匹配你之前 Deployment.yaml 里的 spec.template.metadata.labels。
+  selector:
+    app: gobook
+
+  # 端口映射配置
+  ports:
+    - protocol: TCP          # 协议类型（TCP/UDP）
+      port: 80               # Service 本身监听的端口（即外部访问者使用的端口）
+      targetPort: 8080       # 目标 Pod 容器实际监听的端口（即你的 gobook 程序监听的端口）

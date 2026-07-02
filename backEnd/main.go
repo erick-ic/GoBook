@@ -5,59 +5,57 @@ import (
 	"GoBook/internal/repository/dao"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
-	"GoBook/internal/web/middleware"
-	"strings"
-	"time"
+	"net/http"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 func main() {
-	db := initDB()
+	//db := initDB()
 	server := initWebServer()
 
-	u := initUser(db)
-	u.RegisterUsersRouters(server)
+	//u := initUser(db)
+	//u.RegisterUsersRouters(server)
 
 	server.Run(":8080")
 }
 
 func initWebServer() *gin.Engine {
 	server := gin.Default()
+	server.GET("/hello", func(ctx *gin.Context) {
+		ctx.String(http.StatusOK, "hello world1")
+	})
 	//处理跨域
-	server.Use(cors.New(cors.Config{
-		//prelight接口请求中，origin:http://localhost:3000
-		//AllowOrigins: []string{"http://localhost:3000"},
-
-		//access-control-request-method：POST
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-
-		//access-control-request-headers:authorization,content-type
-		//大小写都行
-		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
-
-		//暴露给客户端
-		ExposeHeaders: []string{"X-Total-Count", "X-JWT-Token"},
-
-		//是否允许携带cookie
-		AllowCredentials: true,
-
-		//复杂请求配置
-		AllowOriginFunc: func(origin string) bool {
-			if strings.HasPrefix(origin, "http://localhost") {
-				//开发环境
-				return true
-			}
-			return strings.Contains(origin, "xxx.com")
-		},
-
-		MaxAge: 12 * time.Hour,
-	}))
+	//server.Use(cors.New(cors.Config{
+	//	//prelight接口请求中，origin:http://localhost:3000
+	//	//AllowOrigins: []string{"http://localhost:3000"},
+	//
+	//	//access-control-request-method：POST
+	//	AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+	//
+	//	//access-control-request-headers:authorization,content-type
+	//	//大小写都行
+	//	AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+	//
+	//	//暴露给客户端
+	//	ExposeHeaders: []string{"X-Total-Count", "X-JWT-Token"},
+	//
+	//	//是否允许携带cookie
+	//	AllowCredentials: true,
+	//
+	//	//复杂请求配置
+	//	AllowOriginFunc: func(origin string) bool {
+	//		if strings.HasPrefix(origin, "http://localhost") {
+	//			//开发环境
+	//			return true
+	//		}
+	//		return strings.Contains(origin, "xxx.com")
+	//	},
+	//
+	//	MaxAge: 12 * time.Hour,
+	//}))
 
 	//设置session
 	//步骤1: 数据存放在store
@@ -79,14 +77,14 @@ func initWebServer() *gin.Engine {
 	   - []byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y") : 身份验证密钥（用于签名 Session ID，防篡改）
 	   - []byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2") : 数据加密密钥（用于加密会话数据，保证数据私密性）
 	*/
-	store, _ := redis.NewStore(
-		16,
-		"tcp",
-		"localhost:6379",
-		"",
-		"",
-		[]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
-		[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
+	//store, _ := redis.NewStore(
+	//	16,
+	//	"tcp",
+	//	"localhost:6379",
+	//	"",
+	//	"",
+	//	[]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
+	//	[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
 
 	////d.限流，一秒钟100次
 	//redisClient := redis.NewClient(&redis.Options{
@@ -96,7 +94,9 @@ func initWebServer() *gin.Engine {
 	//store := memstore.NewStore([]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
 	//	[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
 	//
-	server.Use(sessions.Sessions("mysession", store))
+
+	//server.Use(sessions.Sessions("mysession", store))
+
 	//步骤3: 登录校验
 	//server.Use(
 	//	middleware.NewLoginMiddlewareBuilder().
@@ -105,10 +105,10 @@ func initWebServer() *gin.Engine {
 	//		Build(),
 	//)
 
-	server.Use(middleware.NewLoginJWTMiddlewareBuilder().
-		IgnorePaths("/users/login").
-		IgnorePaths("/users/signup").
-		Build())
+	//server.Use(middleware.NewLoginJWTMiddlewareBuilder().
+	//	IgnorePaths("/users/login").
+	//	IgnorePaths("/users/signup").
+	//	Build())
 	return server
 }
 
