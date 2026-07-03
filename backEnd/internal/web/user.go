@@ -159,7 +159,7 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	claims := UserClaims{
 		//设置token有效期
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
 		},
 		Uid:       u.Id,
 		UserAgent: ctx.Request.UserAgent(),

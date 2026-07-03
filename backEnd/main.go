@@ -7,15 +7,11 @@ import (
 	"GoBook/internal/service"
 	"GoBook/internal/web"
 	"GoBook/internal/web/middleware"
-	"GoBook/pkg/ginx/middleware/ratelimit"
 	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/memstore"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -33,13 +29,13 @@ func main() {
 func initWebServer() *gin.Engine {
 	server := gin.Default()
 
-	//d. 限流方式，一秒钟100次
-	redisClient := redis.NewClient(&redis.Options{
-		//Addr: "localhost:6379",
-		//Addr: "gobook-redis:11479",
-		Addr: config.Config.Redis.Addr,
-	})
-	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
+	////d. 限流方式，一秒钟100次
+	//redisClient := redis.NewClient(&redis.Options{
+	//	//Addr: "localhost:6379",
+	//	//Addr: "gobook-redis:11479",
+	//	Addr: config.Config.Redis.Addr,
+	//})
+	//server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
 
 	//处理跨域
 	server.Use(cors.New(cors.Config{
@@ -77,8 +73,8 @@ func initWebServer() *gin.Engine {
 	//store := cookie.NewStore([]byte("secret"))
 
 	//b. 数据存在 当前应用服务器的本地内存（RAM） 里，当前 Go 应用进程的运行内存（RAM）。
-	store := memstore.NewStore([]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
-		[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
+	//store := memstore.NewStore([]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
+	//	[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
 
 	//c. redis
 	//数据存在独立的 Redis 服务器
@@ -100,7 +96,7 @@ func initWebServer() *gin.Engine {
 	//	[]byte("3akQBTZmfkuEjQacH5hvUynDnmPvAf7Y"),
 	//	[]byte("Z4d8tz8WDKXT3AvYJkmhEb5VEFfxHHS2"))
 
-	server.Use(sessions.Sessions("mysession", store))
+	//server.Use(sessions.Sessions("mysession", store))
 
 	//步骤3: 登录校验
 	//server.Use(

@@ -11,7 +11,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
     volumes:
       #      设置初始化脚本
-      - ./script/mysql/:/docker-entrypoint-initdb.d/
+      - ./scripts/mysql/:/docker-entrypoint-initdb.d/
     ports:
       #      注意这里我映射为了 13316 端口
       - "13316:3306"
@@ -131,5 +131,5 @@ services:
 #      #      - 暴露了 canal 的端口，但是其实一般比较少直接跟 canal 打交道
 #      - 11111:11111
 #    volumes:
-#      - ./script/canal/gobook/instance.properties:/home/admin/canal-server/conf/gobook/instance.properties
-#      - ./script/canal/canal.properties:/home/admin/canal-server/conf/canal.properties
+#      - ./scripts/canal/gobook/instance.properties:/home/admin/canal-server/conf/gobook/instance.properties
+#      - ./scripts/canal/canal.properties:/home/admin/canal-server/conf/canal.properties
