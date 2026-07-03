@@ -58,3 +58,9 @@ type User struct {
 	//更新时间，毫秒数
 	Utime int64
 }
+
+func (ud *UserDAO) FindById(ctx context.Context, id int64) (User, error) {
+	var u User
+	err := ud.db.WithContext(ctx).Where("`id` = ?", id).First(&u).Error
+	return u, err
+}

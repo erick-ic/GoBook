@@ -177,6 +177,7 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    u,
+		"code":    http.StatusOK,
 	})
 	return
 
@@ -227,7 +228,7 @@ func (uh *UserHandler) Login(ctx *gin.Context) {
 }
 
 // Logout 退出登录
-func (u *UserHandler) Logout(ctx *gin.Context) {
+func (uh *UserHandler) Logout(ctx *gin.Context) {
 	sess := sessions.Default(ctx)
 	sess.Options(sessions.Options{
 		//设置cookie有效期，即删除当前用户的cookie
@@ -238,26 +239,27 @@ func (u *UserHandler) Logout(ctx *gin.Context) {
 }
 
 // Create 创建
-func (u *UserHandler) Create(ctx *gin.Context) {
+func (uh *UserHandler) Create(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "CreateSuccess~")
 }
 
 // Delete 删除
-func (u *UserHandler) Delete(ctx *gin.Context) {
+func (uh *UserHandler) Delete(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "DeleteSuccess~")
 }
 
 // Edit 修改
-func (u *UserHandler) Edit(ctx *gin.Context) {
+func (uh *UserHandler) Edit(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "EditSuccess~")
 }
 
 // Profile 查看
 //
-//	func (u *UserHandler) Profile(ctx *gin.Context) {
+//	func (uh *UserHandler) Profile(ctx *gin.Context) {
 //		ctx.String(http.StatusOK, "this is profile~")
 //	}
-func (u *UserHandler) Profile(ctx *gin.Context) {
+func (uh *UserHandler) Profile(ctx *gin.Context) {
+	// 1. 从 JWT claims 中获取用户信息，如ID
 	v, ok := ctx.Get("claims")
 	if !ok {
 		ctx.String(http.StatusOK, "系统错误")
@@ -267,5 +269,16 @@ func (u *UserHandler) Profile(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "系统错误")
 	}
 	fmt.Println("claims:", claims)
-	ctx.String(http.StatusOK, "this is profile~")
+
+	// 2. 调用 Service 获取用户信息（Service 内部会走缓存）
+	data, err := uh.svc.Profile(ctx, claims.Uid)
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, "获取用户信息失败！")
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data,
+		"code":    http.StatusOK,
+	})
 }

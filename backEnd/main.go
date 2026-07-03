@@ -3,6 +3,7 @@ package main
 import (
 	"GoBook/config"
 	"GoBook/internal/repository"
+	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
@@ -12,15 +13,21 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 func main() {
 	db := initDB()
+	redisClient := initRedis()
+	defer redisClient.Close() // ✅ 确保程序退出时释放连接
+
+	//server := initWebServer(redisClient) // 传入 Redis（限流中间件可能需要）
 	server := initWebServer()
 
-	u := initUser(db)
+	u := initUser(db, redisClient)
+
 	u.RegisterUsersRouters(server)
 
 	server.Run(":8080")
@@ -114,9 +121,10 @@ func initWebServer() *gin.Engine {
 	return server
 }
 
-func initUser(db *gorm.DB) *web.UserHandler {
+func initUser(db *gorm.DB, redisClient redis.Cmdable) *web.UserHandler {
 	ud := dao.NewUserDAO(db)
-	repo := repository.NewUserRepository(ud)
+	uc := cache.NewUserCache(redisClient)
+	repo := repository.NewUserRepository(ud, uc)
 	svc := service.NewUserService(repo)
 	u := web.NewUserHandler(svc)
 	return u
@@ -140,4 +148,13 @@ func initDB() *gorm.DB {
 		panic(err)
 	}
 	return db
+}
+
+func initRedis() *redis.Client {
+	redisClient := redis.NewClient(&redis.Options{
+		//Addr: "localhost:6379",
+		//Addr: "gobook-redis:11479",
+		Addr: config.Config.Redis.Addr,
+	})
+	return redisClient
 }

@@ -72,3 +72,12 @@ func (us *UserService) Login(ctx context.Context, email, password string) (domai
 	}
 	return u, nil
 }
+
+// Profile 简介
+func (us *UserService) Profile(ctx context.Context, id int64) (domain.User, error) {
+	u, err := us.repo.FindById(ctx, id)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return u, nil
+}
