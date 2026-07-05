@@ -25,16 +25,18 @@ type UserHandler struct {
 	emailRegex    *regexp.Regexp
 	passwordRegex *regexp.Regexp
 	svc           *service.UserService
+	codeSvc       *service.CodeService
 }
 
-func NewUserHandler(svc *service.UserService) *UserHandler {
+func NewUserHandler(svc *service.UserService, codeSvc *service.CodeService) *UserHandler {
 	emailExp := regexp.MustCompile(emailRegexPattern, regexp.None)
 	passwordExp := regexp.MustCompile(passwordRegexPattern, regexp.None)
 
 	return &UserHandler{
-		svc:           svc,
 		emailRegex:    emailExp,
 		passwordRegex: passwordExp,
+		svc:           svc,
+		codeSvc:       codeSvc,
 	}
 }
 
@@ -47,6 +49,7 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 	ug.POST("/delete", uh.Delete)
 	ug.POST("/edit", uh.Edit)
 	ug.GET("/profile", uh.Profile)
+	ug.POST("/sendSMSCode", uh.SendSMSCode)
 }
 
 // SignUp 注册
@@ -281,4 +284,21 @@ func (uh *UserHandler) Profile(ctx *gin.Context) {
 		"data":    data,
 		"code":    http.StatusOK,
 	})
+}
+
+func (uh *UserHandler) SendSMSCode(ctx *gin.Context) {
+	type SMSCodeReq struct {
+		Phone string `json:"phone"`
+	}
+	const biz = "login"
+	var req SMSCodeReq
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+	err := uh.codeSvc.Send(ctx, biz, req.Phone)
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, "系统异常！")
+		return
+	}
+	ctx.String(http.StatusOK, "发送成功～")
 }

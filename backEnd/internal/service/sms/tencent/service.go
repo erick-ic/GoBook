@@ -16,6 +16,14 @@ type Service struct {
 	signName *string
 }
 
+func NewService(client *sms.Client, appId string, signName string) *Service {
+	return &Service{
+		client:   client,
+		appId:    &appId,
+		signName: &signName,
+	}
+}
+
 func (s *Service) Send(ctx context.Context, tplId string, args []string, numbers ...string) error {
 	request := sms.NewSendSmsRequest()
 	request.SetContext(ctx)
@@ -51,12 +59,4 @@ func (s *Service) toPtrSlice(data []string) []*string {
 		func(idx int, src string) *string {
 			return &src
 		})
-}
-
-func NewService(client *sms.Client, appId string, signName string) *Service {
-	return &Service{
-		client:   client,
-		appId:    &appId,
-		signName: &signName,
-	}
 }
