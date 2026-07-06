@@ -118,6 +118,7 @@ func initWebServer() *gin.Engine {
 		IgnorePaths("/users/login").
 		IgnorePaths("/users/signup").
 		IgnorePaths("/users/sendSMSCode").
+		IgnorePaths("/users/loginSMS").
 		Build())
 
 	return server

@@ -50,6 +50,8 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 	ug.POST("/edit", uh.Edit)
 	ug.GET("/profile", uh.Profile)
 	ug.POST("/sendSMSCode", uh.SendSMSCode)
+	//ug.POST("/verifySMSCode", uh.VerifySMSCode)
+	ug.POST("/loginSMS", uh.LoginSMSCode)
 }
 
 // SignUp 注册
@@ -186,6 +188,47 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 
 }
 
+// LoginSMSCode 验证码登录
+func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
+	type LoginReq struct {
+		Phone string `json:"phone"`
+		Code  string `json:"code"`
+	}
+	const biz = "login"
+	var req LoginReq
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+	if req.Phone == "" {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "手机号错误！",
+		})
+		return
+	}
+	ok, err := uh.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
+
+	if err != nil {
+		// 系统或业务错误（包括次数耗尽）
+		switch err {
+		case service.ErrCodeVerifyTooManyTimes:
+			ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "验证码校验错误，请重新获取验证码"})
+		default:
+			ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "系统错误！"})
+		}
+		return
+	}
+
+	if !ok {
+		// 验证码不匹配或已过期
+		ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "验证码错误！"})
+		return
+	}
+
+	// 全部通过
+	ctx.JSON(http.StatusOK, Result{Code: 0, Msg: "验证码校验成功～"})
+}
+
 // Login 登录
 func (uh *UserHandler) Login(ctx *gin.Context) {
 	type LoginReq struct {
@@ -257,10 +300,6 @@ func (uh *UserHandler) Edit(ctx *gin.Context) {
 }
 
 // Profile 查看
-//
-//	func (uh *UserHandler) Profile(ctx *gin.Context) {
-//		ctx.String(http.StatusOK, "this is profile~")
-//	}
 func (uh *UserHandler) Profile(ctx *gin.Context) {
 	// 1. 从 JWT claims 中获取用户信息，如ID
 	v, ok := ctx.Get("claims")
@@ -296,9 +335,46 @@ func (uh *UserHandler) SendSMSCode(ctx *gin.Context) {
 		return
 	}
 	err := uh.codeSvc.Send(ctx, biz, req.Phone)
-	if err != nil {
-		ctx.String(http.StatusInternalServerError, "系统异常！")
-		return
+	switch err {
+	case nil:
+		ctx.JSON(http.StatusOK, Result{
+			Code: 0,
+			Msg:  "发送成功～",
+		})
+	case service.ErrCodeSendTooMany:
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "短信发送频繁，请稍后再试！",
+		})
+	default:
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "系统异常!",
+		})
+
 	}
-	ctx.String(http.StatusOK, "发送成功～")
 }
+
+//func (uh *UserHandler) VerifySMSCode(ctx *gin.Context) {
+//	type VerifySMSCodeReq struct {
+//		Phone string `json:"phone"`
+//		Code  string `json:"code"`
+//	}
+//	const biz = "login"
+//	var req VerifySMSCodeReq
+//	if err := ctx.Bind(&req); err != nil {
+//		return
+//	}
+//	ok, err := uh.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
+//	if err != nil {
+//		return
+//	}
+//	if ok && err == nil {
+//		res := Result{
+//			Code: 0,
+//			Msg:  "验证码校验成功～",
+//			Data: "",
+//		}
+//		ctx.JSON(http.StatusOK, res)
+//	}
+//}

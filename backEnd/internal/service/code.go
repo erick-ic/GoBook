@@ -10,6 +10,11 @@ import (
 
 const codeTplId = "1877556"
 
+var (
+	ErrCodeSendTooMany        = repository.ErrCodeSendTooMany
+	ErrCodeVerifyTooManyTimes = repository.ErrCodeVerifyTooManyTimes
+)
+
 type CodeService struct {
 	repo *repository.CodeRepository
 	sms  sms.Service
@@ -37,8 +42,8 @@ func (cs *CodeService) Send(ctx context.Context, biz, phone string) error {
 }
 
 // Verify 验证码校验
-func (cs *CodeService) Verify(ctx context.Context, biz, code, phone string) (bool, error) {
-	return cs.repo.VerifyCode(ctx, biz, code, phone)
+func (cs *CodeService) Verify(ctx context.Context, biz, phone, code string) (bool, error) {
+	return cs.repo.VerifyCode(ctx, biz, phone, code)
 }
 
 // 生成6位随机验证码
