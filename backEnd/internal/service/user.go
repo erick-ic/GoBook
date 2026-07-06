@@ -81,3 +81,24 @@ func (us *UserService) Profile(ctx context.Context, id int64) (domain.User, erro
 	}
 	return u, nil
 }
+
+func (us *UserService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
+	u, err := us.repo.FindByPhone(ctx, phone)
+	//1. 先检查用户是否存在
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		// 如果错误不是“未找到”，说明要么找到了，要么DB出错了，直接返回
+		return u, err
+	}
+	// 2. 用户不存在，新建一个（仅赋值手机号，邮箱为空）
+	user := domain.User{
+		Phone: phone,
+	}
+	err = us.repo.Create(ctx, user)
+	// 如果创建冲突（极低概率并发创建），忽略冲突错误
+	if err != nil && !errors.Is(err, repository.ErrUserDuplicated) {
+		return user, err
+	}
+
+	// 3. 重新查询并返回（处理主从延迟问题）
+	return us.repo.FindByPhone(ctx, phone)
+}

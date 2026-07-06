@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 )
 
 var (
-	ErrUserDuplicated = errors.New("邮箱冲突！")
+	ErrUserDuplicated = errors.New("邮箱/手机号冲突！")
 	ErrUserNotFound   = gorm.ErrRecordNotFound
 )
 
@@ -24,9 +25,21 @@ func NewUserDAO(db *gorm.DB) *UserDAO {
 	}
 }
 
+func (ud *UserDAO) FindByPhone(ctx context.Context, phone string) (User, error) {
+	var u User
+	err := ud.db.WithContext(ctx).Where("phone = ?", phone).First(&u).Error
+	return u, err
+}
+
 func (ud *UserDAO) FindByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := ud.db.WithContext(ctx).Where("email = ?", email).First(&u).Error
+	return u, err
+}
+
+func (ud *UserDAO) FindById(ctx context.Context, id int64) (User, error) {
+	var u User
+	err := ud.db.WithContext(ctx).Where("`id` = ?", id).First(&u).Error
 	return u, err
 }
 
@@ -36,10 +49,12 @@ func (ud *UserDAO) Insert(ctx context.Context, u User) error {
 	u.Ctime = now
 	u.Utime = now
 	err := ud.db.WithContext(ctx).Create(&u).Error
+
+	// 捕获 MySQL 1062 错误（唯一键冲突）
 	if mysqlErr, ok := err.(*mysql.MySQLError); ok {
 		const uniqueConflictsErrNo uint16 = 1062
 		if mysqlErr.Number == uniqueConflictsErrNo {
-			//唯一索引冲突，即邮箱冲突
+			//唯一索引冲突，即邮箱/手机号冲突
 			return ErrUserDuplicated
 		}
 	}
@@ -49,18 +64,14 @@ func (ud *UserDAO) Insert(ctx context.Context, u User) error {
 // User 数据库表结构
 // 别称entity、model、PO(persistent object)
 type User struct {
-	Id       int    `gorm:"primaryKey, autoIncrement"`
-	Email    string `gorm:"unique"`
+	Id       int            `gorm:"primaryKey, autoIncrement"`
+	Email    sql.NullString `gorm:"unique"`
 	Password string
-
+	//唯一索引允许有多个空值，但不能有多个""
+	//Phone *string        //早期写法需要解引流，判空
+	Phone sql.NullString `gorm:"unique"` //唯一索引，允许 NULL
 	//创建时间，毫秒数
 	Ctime int64
 	//更新时间，毫秒数
 	Utime int64
-}
-
-func (ud *UserDAO) FindById(ctx context.Context, id int64) (User, error) {
-	var u User
-	err := ud.db.WithContext(ctx).Where("`id` = ?", id).First(&u).Error
-	return u, err
 }

@@ -50,7 +50,6 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 	ug.POST("/edit", uh.Edit)
 	ug.GET("/profile", uh.Profile)
 	ug.POST("/sendSMSCode", uh.SendSMSCode)
-	//ug.POST("/verifySMSCode", uh.VerifySMSCode)
 	ug.POST("/loginSMS", uh.LoginSMSCode)
 }
 
@@ -141,23 +140,49 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	}
 
 	u, err := uh.svc.Login(ctx, req.Email, req.Password)
+
 	if errors.Is(err, service.ErrInvalidUserPassword) {
-		ctx.String(http.StatusOK, "账号/邮箱或密码错误！")
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "账号/邮箱或密码错误！",
+		})
 		return
 	}
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		ctx.String(http.StatusOK, "用户不存在")
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "用户不存在！",
+		})
 		return
 	}
 	if err != nil {
-		ctx.String(http.StatusOK, "系统错误！")
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
 		return
 	}
 
 	//登录成功
-	//生成token
+	err = uh.setJWTToken(ctx, u.Id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		return
+	}
 
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "登录成功～",
+	})
+	return
+}
+
+func (uh *UserHandler) setJWTToken(ctx *gin.Context, uid int64) error {
+	//生成token
 	//token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
 	//	"userId": u.Id,
 	//})
@@ -166,7 +191,7 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
 		},
-		Uid:       u.Id,
+		Uid:       uid,
 		UserAgent: ctx.Request.UserAgent(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -174,22 +199,16 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	//随机生成32位key 95osj3fUD7fo0mlYdDbncXz4VD2igvf0
 	tokenStr, err := token.SignedString([]byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"))
 	if err != nil {
-		ctx.String(http.StatusInternalServerError, "系统错误！")
+		return err
 	}
 	//通过Http Response Header x-jwt-token返回
 	ctx.Header("x-jwt-token", tokenStr)
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    u,
-		"code":    http.StatusOK,
-	})
-	return
-
+	return nil
 }
 
 // LoginSMSCode 验证码登录
 func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
+	// 1. 绑定请求参数（Phone + Code）
 	type LoginReq struct {
 		Phone string `json:"phone"`
 		Code  string `json:"code"`
@@ -199,34 +218,65 @@ func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
 	if err := ctx.Bind(&req); err != nil {
 		return
 	}
+	// 2. 业务校验：手机号非空
 	if req.Phone == "" {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
-			Msg:  "手机号错误！",
+			Msg:  "手机号码错误！",
 		})
 		return
 	}
+	// 3. 调用验证码服务校验（biz="login" 区分业务场景）
 	ok, err := uh.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
-
 	if err != nil {
 		// 系统或业务错误（包括次数耗尽）
 		switch err {
 		case service.ErrCodeVerifyTooManyTimes:
-			ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "验证码校验错误，请重新获取验证码"})
+			ctx.JSON(http.StatusOK, Result{
+				Code: 5,
+				Msg:  "验证码校验错误，请重新获取验证码",
+			})
 		default:
-			ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "系统错误！"})
+			ctx.JSON(http.StatusInternalServerError, Result{
+				Code: 5,
+				Msg:  "系统错误！",
+			})
 		}
 		return
 	}
 
 	if !ok {
 		// 验证码不匹配或已过期
-		ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "验证码错误！"})
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "验证码错误！",
+		})
+		return
+	}
+	// 4. 【核心】查找或创建用户（传入手机号）
+	//查找或创建该用户
+	user, err := uh.svc.FindOrCreate(ctx, req.Phone)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		return
+	}
+	// 5. 生成 JWT 并写入响应头
+	if err := uh.setJWTToken(ctx, user.Id); err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
 		return
 	}
 
-	// 全部通过
-	ctx.JSON(http.StatusOK, Result{Code: 0, Msg: "验证码校验成功～"})
+	// 6. 成功返回
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "登录成功～",
+	})
 }
 
 // Login 登录
@@ -354,27 +404,3 @@ func (uh *UserHandler) SendSMSCode(ctx *gin.Context) {
 
 	}
 }
-
-//func (uh *UserHandler) VerifySMSCode(ctx *gin.Context) {
-//	type VerifySMSCodeReq struct {
-//		Phone string `json:"phone"`
-//		Code  string `json:"code"`
-//	}
-//	const biz = "login"
-//	var req VerifySMSCodeReq
-//	if err := ctx.Bind(&req); err != nil {
-//		return
-//	}
-//	ok, err := uh.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
-//	if err != nil {
-//		return
-//	}
-//	if ok && err == nil {
-//		res := Result{
-//			Code: 0,
-//			Msg:  "验证码校验成功～",
-//			Data: "",
-//		}
-//		ctx.JSON(http.StatusOK, res)
-//	}
-//}
