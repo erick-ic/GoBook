@@ -20,16 +20,18 @@ import (
 )
 
 func main() {
-	db := initDB()
-	redisClient := initRedis()
-	defer redisClient.Close() // ✅ 确保程序退出时释放连接
+	//db := initDB()
+	//redisClient := initRedis()
+	//defer redisClient.Close() // ✅ 确保程序退出时释放连接
 
 	//server := initWebServer(redisClient) // 传入 Redis（限流中间件可能需要）
-	server := initWebServer()
+	//server := initWebServer()
 
-	u := initUser(db, redisClient)
+	//u := initUser(db, redisClient)
 
-	u.RegisterUsersRouters(server)
+	//u.RegisterUsersRouters(server)
+
+	server := InitWebServer()
 
 	server.Run(":8080")
 }
