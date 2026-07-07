@@ -65,7 +65,7 @@ func (us *userService) Login(ctx context.Context, email, password string) (domai
 	u, err := us.repo.FindByEmail(ctx, email)
 	//未找到用户
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return domain.User{}, ErrUserNotFund
+		return domain.User{}, ErrInvalidUserPassword
 	}
 	if err != nil {
 		return domain.User{}, err

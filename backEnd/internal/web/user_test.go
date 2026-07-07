@@ -47,6 +47,8 @@ func TestMock(t *testing.T) {
 	//mock error
 }
 
+// mockgen -source=internal/service/user.go -package=svcmocks -destination=internal/service/mocks/user.mock.go
+
 // 结构体切片
 //
 //	[]struct{}{
