@@ -112,7 +112,7 @@ func Test_userService_Login(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			//func (us *userService) Login(ctx context.Context, email, password string) (domain.User, error)
+			//func NewUserService(repo repository.UserRepository) UserService
 			svc := NewUserService(tc.mock(ctrl))
 			u, err := svc.Login(tc.ctx, tc.email, tc.password)
 			assert.Equal(t, tc.expectErr, err)

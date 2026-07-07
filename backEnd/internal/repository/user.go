@@ -6,8 +6,6 @@ import (
 	"GoBook/internal/repository/dao"
 	"context"
 	"database/sql"
-	"errors"
-	"log"
 	"time"
 )
 
@@ -43,7 +41,7 @@ func (ur *CacheUserRepository) Create(ctx context.Context, u domain.User) error 
 	return ur.dao.Insert(ctx, ur.domainToEntity(u)) // string → sql.NullString
 }
 
-// FindByPhone 查找
+// FindByPhone 查找手机号码
 func (ur *CacheUserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
 	u, err := ur.dao.FindByPhone(ctx, phone)
 	if err != nil {
@@ -57,6 +55,7 @@ func (ur *CacheUserRepository) FindByPhone(ctx context.Context, phone string) (d
 	return ur.entityToDomain(u), nil // sql.NullString → string
 }
 
+// FindByEmail 查找邮箱
 func (ur *CacheUserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := ur.dao.FindByEmail(ctx, email)
 	if err != nil {
@@ -70,6 +69,7 @@ func (ur *CacheUserRepository) FindByEmail(ctx context.Context, email string) (d
 	return ur.entityToDomain(u), nil
 }
 
+// FindById 查找Id
 func (ur *CacheUserRepository) FindById(ctx context.Context, id int64) (domain.User, error) {
 	/*
 		缓存需要面临的问题：数据一致性、缓存崩了
@@ -100,18 +100,22 @@ func (ur *CacheUserRepository) FindById(ctx context.Context, id int64) (domain.U
 	u = ur.entityToDomain(ue)
 
 	//如果是缓存未命中（而非故障），异步回写缓存
-	if errors.Is(cacheErr, cache.ErrNotExists) {
-		//开启协程，不阻塞主流程
-		go func() {
-			//从数据库中查到数据，回写redis
-			if setErr := ur.cache.Set(ctx, u); setErr != nil {
-				// 计入监控，或打印日志
-				log.Printf("回写缓存失败: uid=%d, err=%v", u.Id, setErr)
-			} else {
-				log.Printf("回写缓存成功: uid=%d", u.Id)
-			}
-		}()
-	}
+	//if errors.Is(cacheErr, cache.ErrNotExists) {
+	//	//开启协程，不阻塞主流程
+	//	go func() {
+	//		//从数据库中查到数据，回写redis
+	//		if setErr := ur.cache.Set(ctx, u); setErr != nil {
+	//			// 计入监控，或打印日志
+	//			log.Printf("回写缓存失败: uid=%d, err=%v", u.Id, setErr)
+	//		} else {
+	//			log.Printf("回写缓存成功: uid=%d", u.Id)
+	//		}
+	//	}()
+	//}
+	go func() {
+		_ = ur.cache.Set(ctx, u)
+	}()
+
 	// 如果缓存故障（如连接超时），我们也可以不回写，或者同步尝试，但不要阻塞
 
 	return u, err
