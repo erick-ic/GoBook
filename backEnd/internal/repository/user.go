@@ -16,20 +16,26 @@ var (
 	ErrUserNotFound   = dao.ErrUserNotFound
 )
 
-type UserRepository struct {
-	dao   *dao.UserDAO
-	cache *cache.UserCache
+type UserRepository interface {
+	Create(ctx context.Context, u domain.User) error
+	FindByPhone(ctx context.Context, phone string) (domain.User, error)
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
+	FindById(ctx context.Context, id int64) (domain.User, error)
+}
+type CacheUserRepository struct {
+	dao   dao.UserDAO
+	cache cache.UserCache
 }
 
-func NewUserRepository(dao *dao.UserDAO, cache *cache.UserCache) *UserRepository {
-	return &UserRepository{
+func NewUserRepository(dao dao.UserDAO, cache cache.UserCache) UserRepository {
+	return &CacheUserRepository{
 		dao:   dao,
 		cache: cache,
 	}
 }
 
 // Create 创建
-func (ur *UserRepository) Create(ctx context.Context, u domain.User) error {
+func (ur *CacheUserRepository) Create(ctx context.Context, u domain.User) error {
 	//return ur.dao.Insert(ctx, dao.User{
 	//	Email:    u.Email,
 	//	Password: u.Password,
@@ -38,7 +44,7 @@ func (ur *UserRepository) Create(ctx context.Context, u domain.User) error {
 }
 
 // FindByPhone 查找
-func (ur *UserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
+func (ur *CacheUserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
 	u, err := ur.dao.FindByPhone(ctx, phone)
 	if err != nil {
 		return domain.User{}, err
@@ -51,7 +57,7 @@ func (ur *UserRepository) FindByPhone(ctx context.Context, phone string) (domain
 	return ur.entityToDomain(u), nil // sql.NullString → string
 }
 
-func (ur *UserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
+func (ur *CacheUserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := ur.dao.FindByEmail(ctx, email)
 	if err != nil {
 		return domain.User{}, err
@@ -64,7 +70,7 @@ func (ur *UserRepository) FindByEmail(ctx context.Context, email string) (domain
 	return ur.entityToDomain(u), nil
 }
 
-func (ur *UserRepository) FindById(ctx context.Context, id int64) (domain.User, error) {
+func (ur *CacheUserRepository) FindById(ctx context.Context, id int64) (domain.User, error) {
 	/*
 		缓存需要面临的问题：数据一致性、缓存崩了
 		数据查找顺序：
@@ -112,7 +118,7 @@ func (ur *UserRepository) FindById(ctx context.Context, id int64) (domain.User, 
 }
 
 // DAO → Domain
-func (ur *UserRepository) entityToDomain(u dao.User) domain.User {
+func (ur *CacheUserRepository) entityToDomain(u dao.User) domain.User {
 	return domain.User{
 		Id:       int64(u.Id),
 		Email:    u.Email.String,
@@ -123,7 +129,7 @@ func (ur *UserRepository) entityToDomain(u dao.User) domain.User {
 }
 
 // Domain → DAO/、
-func (ur *UserRepository) domainToEntity(u domain.User) dao.User {
+func (ur *CacheUserRepository) domainToEntity(u domain.User) dao.User {
 	return dao.User{
 		Id:       int(u.Id),
 		Email:    sql.NullString{String: u.Email, Valid: u.Email != ""},

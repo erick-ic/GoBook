@@ -24,17 +24,21 @@ var luaSetCode string
 //go:embed lua/verify_code.lua
 var luaVerifyCode string
 
-type CodeCache struct {
+type CodeCache interface {
+	SetCode(ctx context.Context, biz, phone, code string) error
+	VerifyCode(ctx context.Context, biz, phone, inputCode string) (bool, error)
+}
+type RedisCodeCache struct {
 	client redis.Cmdable
 }
 
-func NewCodeCache(client redis.Cmdable) *CodeCache {
-	return &CodeCache{
+func NewCodeCache(client redis.Cmdable) CodeCache {
+	return &RedisCodeCache{
 		client: client,
 	}
 }
 
-func (cc *CodeCache) SetCode(ctx context.Context, biz, phone, code string) error {
+func (cc *RedisCodeCache) SetCode(ctx context.Context, biz, phone, code string) error {
 	/*
 		cc.client.Eval(...) 执行 Lua 脚本，返回 *redis.Cmd 对象（一个命令结果容器）。
 			- ctx：上下文，用于超时控制或链路追踪（若 Redis 操作超过上下文 Deadline 会取消）。
@@ -61,7 +65,7 @@ func (cc *CodeCache) SetCode(ctx context.Context, biz, phone, code string) error
 	}
 }
 
-func (cc *CodeCache) VerifyCode(ctx context.Context, biz, phone, inputCode string) (bool, error) {
+func (cc *RedisCodeCache) VerifyCode(ctx context.Context, biz, phone, inputCode string) (bool, error) {
 	res, err := cc.client.Eval(ctx, luaVerifyCode, []string{cc.key(biz, phone)}, inputCode).Int()
 	if err != nil {
 		return false, err
@@ -78,6 +82,6 @@ func (cc *CodeCache) VerifyCode(ctx context.Context, biz, phone, inputCode strin
 	}
 }
 
-func (cc *CodeCache) key(biz, phone string) string {
+func (cc *RedisCodeCache) key(biz, phone string) string {
 	return fmt.Sprintf("phone_code:%s:%s", biz, phone)
 }

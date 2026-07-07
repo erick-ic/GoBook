@@ -16,18 +16,24 @@ var (
 	ErrInvalidUserPassword = errors.New("账号/邮箱或密码不对")
 )
 
-type UserService struct {
-	repo *repository.UserRepository
+type UserService interface {
+	SignUp(ctx context.Context, u domain.User) error
+	Login(ctx context.Context, email, password string) (domain.User, error)
+	Profile(ctx context.Context, id int64) (domain.User, error)
+	FindOrCreate(ctx context.Context, phone string) (domain.User, error)
+}
+type userService struct {
+	repo repository.UserRepository
 }
 
-func NewUserService(repo *repository.UserRepository) *UserService {
-	return &UserService{
+func NewUserService(repo repository.UserRepository) UserService {
+	return &userService{
 		repo: repo,
 	}
 }
 
 // SignUp 注册
-func (us *UserService) SignUp(ctx context.Context, u domain.User) error {
+func (us *userService) SignUp(ctx context.Context, u domain.User) error {
 	/*
 		bcrypt.GenerateFromPassword：接受明文密码（[]byte）和计算成本（cost）参数。
 		cost（成本）：控制加密强度，bcrypt.DefaultCost 为 10，值越大加密越慢也越安全（通常 10~12 即可）。
@@ -47,7 +53,7 @@ func (us *UserService) SignUp(ctx context.Context, u domain.User) error {
 }
 
 // Login 登录
-func (us *UserService) Login(ctx context.Context, email, password string) (domain.User, error) {
+func (us *userService) Login(ctx context.Context, email, password string) (domain.User, error) {
 	/*
 		bcrypt.CompareHashAndPassword：接受已存储的哈希（[]byte）和登录时输入的明文密码（[]byte）。
 		内部流程：该函数会从哈希中提取盐值，对明文密码使用相同盐值重新计算哈希，然后与存储的哈希比较。
@@ -74,7 +80,7 @@ func (us *UserService) Login(ctx context.Context, email, password string) (domai
 }
 
 // Profile 简介
-func (us *UserService) Profile(ctx context.Context, id int64) (domain.User, error) {
+func (us *userService) Profile(ctx context.Context, id int64) (domain.User, error) {
 	u, err := us.repo.FindById(ctx, id)
 	if err != nil {
 		return domain.User{}, err
@@ -82,7 +88,7 @@ func (us *UserService) Profile(ctx context.Context, id int64) (domain.User, erro
 	return u, nil
 }
 
-func (us *UserService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
+func (us *userService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
 	u, err := us.repo.FindByPhone(ctx, phone)
 	//1. 先检查用户是否存在
 	if !errors.Is(err, repository.ErrUserNotFound) {
