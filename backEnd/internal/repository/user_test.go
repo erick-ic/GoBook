@@ -23,10 +23,13 @@ func TestCacheUserRepository_FindById(t *testing.T) {
 	//去除毫秒外的部分
 	now = time.UnixMilli(now.UnixMilli())
 	testCases := []struct {
-		name       string
-		ctx        context.Context
-		id         int64
-		mock       func(ctrl *gomock.Controller) (dao.UserDAO, cache.UserCache)
+		name string
+
+		ctx context.Context
+		id  int64
+
+		mock func(ctrl *gomock.Controller) (dao.UserDAO, cache.UserCache)
+
 		expectUser domain.User
 		expectErr  error
 	}{

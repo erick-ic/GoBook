@@ -20,7 +20,8 @@ import (
 func Test_userService_Login(t *testing.T) {
 	now := time.Now()
 	testCases := []struct {
-		name     string
+		name string
+
 		ctx      context.Context
 		email    string
 		password string

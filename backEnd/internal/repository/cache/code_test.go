@@ -14,13 +14,15 @@ import (
 // mockgen -package=redismocks -destination=internal/repository/cache/redismocks/cmdable.mock.go github.com/redis/go-redis/v9 Cmdable
 func TestRedisCodeCache_SetCode(t *testing.T) {
 	testCases := []struct {
-		name  string
+		name string
+
 		ctx   context.Context
 		biz   string
 		phone string
 		code  string
 
-		mock      func(ctrl *gomock.Controller) redis.Cmdable
+		mock func(ctrl *gomock.Controller) redis.Cmdable
+
 		expectErr error
 	}{
 		{

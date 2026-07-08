@@ -62,6 +62,8 @@ func TestUserHandler_SignUp(t *testing.T) {
 		//用例名称
 		name string
 
+		//上下文控制
+		ctx context.Context
 		//原始 HTTP 请求体（JSON 字符串），模拟前端/客户端发来的数据
 		reqBody string
 
@@ -70,12 +72,12 @@ func TestUserHandler_SignUp(t *testing.T) {
 
 		//预期的 HTTP 状态码（如 200/400）
 		expectCode int
-
 		//预期的响应体字符串
 		expectBody string
 	}{
 		{
 			name: "注册成功",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@qq.com",
@@ -97,6 +99,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 		},
 		{
 			name: "参数不对，Bind失败！",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@qq.com",
@@ -110,6 +113,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 		},
 		{
 			name: "邮箱格式不对！",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@q",
@@ -126,6 +130,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 		},
 		{
 			name: "两次输入的密码不匹配",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@qq.com",
@@ -142,6 +147,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 		},
 		{
 			name: "密码格式错误！",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@qq.com",
@@ -158,6 +164,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 		},
 		{
 			name: "邮箱重复了！",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@qq.com",
@@ -179,6 +186,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 		},
 		{
 			name: "系统异常！",
+			ctx:  context.Background(),
 			reqBody: `
 {
 "email":"222@qq.com",
