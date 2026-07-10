@@ -32,9 +32,12 @@ func InitWebServer() *gin.Engine {
 		service.NewUserService,
 		service.NewCodeService,
 		ioc.InitSMSService,
+		ioc.InitOAuth2WechatService,
+		ioc.NewOAuth2WechatConfig,
 
 		//初始化handler
 		web.NewUserHandler,
+		web.NewOAuth2WechatHandler,
 
 		//初始化gin、路由、中间件
 		ioc.InitGin,

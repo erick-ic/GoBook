@@ -19,6 +19,7 @@ type UserDAO interface {
 	FindByPhone(ctx context.Context, phone string) (User, error)
 	FindByEmail(ctx context.Context, email string) (User, error)
 	FindById(ctx context.Context, id int64) (User, error)
+	FindByWechat(ctx context.Context, openId string) (User, error)
 	Insert(ctx context.Context, u User) error
 }
 type GORMUserDAO struct {
@@ -29,6 +30,12 @@ func NewUserDAO(db *gorm.DB) UserDAO {
 	return &GORMUserDAO{
 		db: db,
 	}
+}
+
+func (ud *GORMUserDAO) FindByWechat(ctx context.Context, openId string) (User, error) {
+	var u User
+	err := ud.db.WithContext(ctx).Where("wechat_open_id = ?", openId).First(&u).Error
+	return u, err
 }
 
 func (ud *GORMUserDAO) FindByPhone(ctx context.Context, phone string) (User, error) {
@@ -76,6 +83,11 @@ type User struct {
 	//唯一索引允许有多个空值，但不能有多个""
 	//Phone *string        //早期写法需要解引流，判空
 	Phone sql.NullString `gorm:"unique"` //唯一索引，允许 NULL
+
+	//微信字段 wechatInfo
+	WechatUnionId sql.NullString
+	WechatOpenId  sql.NullString `gorm:"unique"`
+
 	//创建时间，毫秒数
 	Ctime int64
 	//更新时间，毫秒数

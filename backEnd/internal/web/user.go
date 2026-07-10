@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
 
@@ -26,6 +24,7 @@ type UserHandler struct {
 	passwordRegex *regexp.Regexp
 	svc           service.UserService
 	codeSvc       service.CodeService
+	jwtHandler
 }
 
 func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler {
@@ -120,14 +119,6 @@ func (uh *UserHandler) SignUp(ctx *gin.Context) {
 
 }
 
-type UserClaims struct {
-	//继承RegisteredClaims，实现claims
-	jwt.RegisteredClaims
-	//放入token的数据
-	Uid       int64
-	UserAgent string
-}
-
 // LoginJWT 登录
 func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	type LoginReq struct {
@@ -179,31 +170,6 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 		Msg:  "登录成功～",
 	})
 	return
-}
-
-func (uh *UserHandler) setJWTToken(ctx *gin.Context, uid int64) error {
-	//生成token
-	//token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
-	//	"userId": u.Id,
-	//})
-	claims := UserClaims{
-		//设置token有效期
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
-		},
-		Uid:       uid,
-		UserAgent: ctx.Request.UserAgent(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	//随机生成32位key 95osj3fUD7fo0mlYdDbncXz4VD2igvf0
-	tokenStr, err := token.SignedString([]byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"))
-	if err != nil {
-		return err
-	}
-	//通过Http Response Header x-jwt-token返回
-	ctx.Header("x-jwt-token", tokenStr)
-	return nil
 }
 
 // LoginSMSCode 验证码登录
