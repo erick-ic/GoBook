@@ -1,23 +1,21 @@
 package middleware
 
 import (
-	"GoBook/internal/web"
-	"fmt"
+	ijwt "GoBook/internal/web/jwt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/redis/go-redis/v9"
 )
 
 type LoginJWTMiddlewareBuilder struct {
 	paths []string
-	cmd   redis.Cmdable
+	ijwt.JWTHandler
 }
 
-func NewLoginJWTMiddlewareBuilder(cmd redis.Cmdable) *LoginJWTMiddlewareBuilder {
+func NewLoginJWTMiddlewareBuilder(jwtHandler ijwt.JWTHandler) *LoginJWTMiddlewareBuilder {
 	return &LoginJWTMiddlewareBuilder{
-		cmd: cmd,
+		JWTHandler: jwtHandler,
 	}
 }
 
@@ -39,8 +37,8 @@ func (ljb *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 		}
 
 		//使用JWT校验
-		tokenStr := web.ExtractToken(ctx)
-		claims := &web.UserClaims{}
+		tokenStr := ljb.ExtractToken(ctx)
+		claims := &ijwt.UserClaims{}
 		//ParseWithClaims需要传入指针
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf0"), nil
@@ -75,9 +73,8 @@ func (ljb *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 		//	ctx.Header("x-jwt-token", tokenStr)
 		//}
 
-		//查看ssid是否有效
-		cnt, err := ljb.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", claims.Ssid)).Result()
-		if err != nil || cnt > 0 {
+		err = ljb.CheckSession(ctx, claims.Ssid)
+		if err != nil {
 			//Redis问题或已退出登录
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return

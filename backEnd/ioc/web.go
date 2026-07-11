@@ -2,6 +2,7 @@ package ioc
 
 import (
 	"GoBook/internal/web"
+	ijwt "GoBook/internal/web/jwt"
 	"GoBook/internal/web/middleware"
 	"GoBook/pkg/ginx/middleware/ratelimit"
 	"strings"
@@ -20,12 +21,12 @@ func InitGin(mdls []gin.HandlerFunc, hdl *web.UserHandler, oauth2 *web.OAuth2Wec
 	return server
 }
 
-func InitMiddleware(redisClient redis.Cmdable) []gin.HandlerFunc {
+func InitMiddleware(redisClient redis.Cmdable, jwtHandler ijwt.JWTHandler) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		//跨域中间件
 		handleCors(),
 		//路由中间件
-		middleware.NewLoginJWTMiddlewareBuilder(redisClient).
+		middleware.NewLoginJWTMiddlewareBuilder(jwtHandler).
 			IgnorePaths("/users/login").
 			IgnorePaths("/users/signup").
 			IgnorePaths("/users/sendSMSCode").

@@ -8,6 +8,7 @@ import (
 	"GoBook/internal/repository/dao"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
+	ijwt "GoBook/internal/web/jwt"
 	"GoBook/ioc"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,7 @@ func InitWebServer() *gin.Engine {
 		ioc.InitSMSService,
 		ioc.InitOAuth2WechatService,
 		ioc.NewOAuth2WechatConfig,
+		ijwt.NewRedisJWTHandler,
 
 		//初始化handler
 		web.NewUserHandler,

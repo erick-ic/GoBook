@@ -2,12 +2,7 @@ package main
 
 import (
 	"GoBook/config"
-	"GoBook/internal/repository"
-	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
-	"GoBook/internal/service"
-	"GoBook/internal/service/sms/memory"
-	"GoBook/internal/web"
 	"strings"
 	"time"
 
@@ -125,21 +120,21 @@ func initWebServer() *gin.Engine {
 	return server
 }
 
-func initUser(db *gorm.DB, redisClient redis.Cmdable) *web.UserHandler {
-	ud := dao.NewUserDAO(db)
-
-	uc := cache.NewUserCache(redisClient)
-	repo := repository.NewUserRepository(ud, uc)
-	svc := service.NewUserService(repo)
-
-	memoSMS := memory.NewMemoService()
-	codeCache := cache.NewCodeCache(redisClient)
-	codeRepo := repository.NewCodeRepository(codeCache)
-	codeSvc := service.NewCodeService(codeRepo, memoSMS)
-
-	u := web.NewUserHandler(svc, codeSvc, redisClient)
-	return u
-}
+//func initUser(db *gorm.DB, redisClient redis.Cmdable) *web.UserHandler {
+//	ud := dao.NewUserDAO(db)
+//
+//	uc := cache.NewUserCache(redisClient)
+//	repo := repository.NewUserRepository(ud, uc)
+//	svc := service.NewUserService(repo)
+//
+//	memoSMS := memory.NewMemoService()
+//	codeCache := cache.NewCodeCache(redisClient)
+//	codeRepo := repository.NewCodeRepository(codeCache)
+//	codeSvc := service.NewCodeService(codeRepo, memoSMS)
+//
+//	u := web.NewUserHandler(svc, codeSvc, redisClient)
+//	return u
+//}
 
 func initDB() *gorm.DB {
 	//数据库连接

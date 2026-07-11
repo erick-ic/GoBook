@@ -3,10 +3,10 @@ package web
 import (
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
+	ijwt "GoBook/internal/web/jwt"
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
@@ -27,11 +27,11 @@ type UserHandler struct {
 	passwordRegex *regexp.Regexp
 	svc           service.UserService
 	codeSvc       service.CodeService
-	jwtHandler
+	ijwt.JWTHandler
 	cmd redis.Cmdable
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeService, cmd redis.Cmdable) *UserHandler {
+func NewUserHandler(svc service.UserService, codeSvc service.CodeService, cmd redis.Cmdable, jwtHandler ijwt.JWTHandler) *UserHandler {
 	emailExp := regexp.MustCompile(emailRegexPattern, regexp.None)
 	passwordExp := regexp.MustCompile(passwordRegexPattern, regexp.None)
 
@@ -40,7 +40,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeService, cmd re
 		passwordRegex: passwordExp,
 		svc:           svc,
 		codeSvc:       codeSvc,
-		jwtHandler:    newJwtHandler(),
+		JWTHandler:    jwtHandler,
 		cmd:           cmd,
 	}
 }
@@ -181,7 +181,7 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	//	})
 	//	return
 	//}
-	err = uh.setLoginToken(ctx, u.Id)
+	err = uh.SetLoginToken(ctx, u.Id)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -270,7 +270,7 @@ func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
 	//	})
 	//	return
 	//}
-	if err := uh.setLoginToken(ctx, user.Id); err != nil {
+	if err := uh.SetLoginToken(ctx, user.Id); err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
 			Msg:  "系统错误！",
@@ -393,7 +393,7 @@ func (uh *UserHandler) Profile(ctx *gin.Context) {
 	if !ok {
 		ctx.String(http.StatusOK, "系统错误")
 	}
-	claims, ok := v.(*UserClaims)
+	claims, ok := v.(*ijwt.UserClaims)
 	if !ok {
 		ctx.String(http.StatusOK, "系统错误")
 	}
@@ -416,12 +416,12 @@ func (uh *UserHandler) Profile(ctx *gin.Context) {
 // 只有调用该方法，才会获得refresh_token，其余都是access_token
 func (uh *UserHandler) RefreshToken(ctx *gin.Context) {
 	//1.提取token
-	refreshToken := ExtractToken(ctx)
+	refreshToken := uh.ExtractToken(ctx)
 
 	//2.使用 refreshTokenKey 验签
-	var rc RefreshClaims
+	var rc ijwt.RefreshClaims
 	token, err := jwt.ParseWithClaims(refreshToken, &rc, func(token *jwt.Token) (interface{}, error) {
-		return uh.refreshTokenKey, nil
+		return ijwt.RefreshTokenKey, nil
 	})
 	if err != nil || !token.Valid {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
@@ -429,15 +429,16 @@ func (uh *UserHandler) RefreshToken(ctx *gin.Context) {
 	}
 
 	//查看ssid是否有效
-	cnt, err := uh.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", rc.Ssid)).Result()
-	if err != nil || cnt > 0 {
+	//cnt, err := uh.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", rc.Ssid)).Result()
+	err = uh.CheckSession(ctx, rc.Ssid)
+	if err != nil {
 		//Redis问题或已退出登录
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
 	//3.更新token
-	err = uh.setJWTToken(ctx, rc.Uid, rc.Ssid)
+	err = uh.SetJWTToken(ctx, rc.Uid, rc.Ssid)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
@@ -450,15 +451,7 @@ func (uh *UserHandler) RefreshToken(ctx *gin.Context) {
 
 // LogoutJWT 退出登录
 func (uh *UserHandler) LogoutJWT(ctx *gin.Context) {
-	ctx.Header("X-JWT-Token", "")
-	ctx.Header("x-refresh-token", "")
-
-	//val := ctx.MustGet("claims")
-	//claims, _ := val.(*UserClaims)
-	claims := ctx.MustGet("claims").(*UserClaims)
-	//标记ssid
-	err := uh.cmd.Set(ctx, fmt.Sprintf("users:ssid:%s", claims.Ssid),
-		"", time.Hour*24*7).Err()
+	err := uh.ClearToken(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
