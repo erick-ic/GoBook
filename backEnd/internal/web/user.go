@@ -10,6 +10,7 @@ import (
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
 
@@ -36,6 +37,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserH
 		passwordRegex: passwordExp,
 		svc:           svc,
 		codeSvc:       codeSvc,
+		jwtHandler:    newJwtHandler(),
 	}
 }
 
@@ -50,6 +52,7 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 	ug.GET("/profile", uh.Profile)
 	ug.POST("/sendSMSCode", uh.SendSMSCode)
 	ug.POST("/loginSMS", uh.LoginSMSCode)
+	ug.POST("/refreshToken", uh.RefreshToken)
 }
 
 // SignUp 注册
@@ -165,6 +168,15 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 		return
 	}
 
+	err = uh.setRefreshToken(ctx, u.Id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, Result{
 		Code: 0,
 		Msg:  "登录成功～",
@@ -238,11 +250,50 @@ func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
 		return
 	}
 
+	if err := uh.setRefreshToken(ctx, user.Id); err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		return
+	}
+
 	// 6. 成功返回
 	ctx.JSON(http.StatusOK, Result{
 		Code: 0,
 		Msg:  "登录成功～",
 	})
+}
+
+// SendSMSCode 发送验证码
+func (uh *UserHandler) SendSMSCode(ctx *gin.Context) {
+	type SMSCodeReq struct {
+		Phone string `json:"phone"`
+	}
+	const biz = "login"
+	var req SMSCodeReq
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+	err := uh.codeSvc.Send(ctx, biz, req.Phone)
+	switch err {
+	case nil:
+		ctx.JSON(http.StatusOK, Result{
+			Code: 0,
+			Msg:  "发送成功～",
+		})
+	case service.ErrCodeSendTooMany:
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "短信发送频繁，请稍后再试！",
+		})
+	default:
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "系统异常!",
+		})
+
+	}
 }
 
 // Login 登录
@@ -341,32 +392,30 @@ func (uh *UserHandler) Profile(ctx *gin.Context) {
 	})
 }
 
-func (uh *UserHandler) SendSMSCode(ctx *gin.Context) {
-	type SMSCodeReq struct {
-		Phone string `json:"phone"`
-	}
-	const biz = "login"
-	var req SMSCodeReq
-	if err := ctx.Bind(&req); err != nil {
+// RefreshToken 刷新access_token，即刷新短token
+// 只有调用该方法，才会获得refresh_token，其余都是access_token
+func (uh *UserHandler) RefreshToken(ctx *gin.Context) {
+	//1.提取token
+	refreshToken := ExtractToken(ctx)
+
+	//2.使用 refreshTokenKey 验签
+	var rc RefreshClaims
+	token, err := jwt.ParseWithClaims(refreshToken, &rc, func(token *jwt.Token) (interface{}, error) {
+		return uh.refreshTokenKey, nil
+	})
+	if err != nil || !token.Valid {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
-	err := uh.codeSvc.Send(ctx, biz, req.Phone)
-	switch err {
-	case nil:
-		ctx.JSON(http.StatusOK, Result{
-			Code: 0,
-			Msg:  "发送成功～",
-		})
-	case service.ErrCodeSendTooMany:
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "短信发送频繁，请稍后再试！",
-		})
-	default:
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "系统异常!",
-		})
 
+	//3.更新token
+	err = uh.setJWTToken(ctx, rc.Uid)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
 	}
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "token刷新成功～",
+	})
 }

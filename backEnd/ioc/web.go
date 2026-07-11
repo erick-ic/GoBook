@@ -32,6 +32,7 @@ func InitMiddleware(redisClient redis.Cmdable) []gin.HandlerFunc {
 			IgnorePaths("/users/loginSMS").
 			IgnorePaths("/oauth2/wechat/authurl").
 			IgnorePaths("/oauth2/wechat/callback").
+			IgnorePaths("/users/refreshToken").
 			Build(),
 		//限流中间件
 		ratelimit.NewBuilder(redisClient, time.Second, 100).Build(),
@@ -51,7 +52,7 @@ func handleCors() gin.HandlerFunc {
 		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 
 		//暴露给客户端
-		ExposeHeaders: []string{"X-Total-Count", "X-JWT-Token"},
+		ExposeHeaders: []string{"X-Total-Count", "X-JWT-Token", "x-refresh-token"},
 
 		//是否允许携带cookie
 		AllowCredentials: true,

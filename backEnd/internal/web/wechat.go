@@ -26,10 +26,11 @@ type WechatHandlerConfig struct {
 
 func NewOAuth2WechatHandler(svc wechat.Service, userSvc service.UserService, cfg WechatHandlerConfig) *OAuth2WechatHandler {
 	return &OAuth2WechatHandler{
-		svc:      svc,
-		userSvc:  userSvc,
-		stateKey: []byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf1"),
-		cfg:      cfg,
+		svc:        svc,
+		userSvc:    userSvc,
+		stateKey:   []byte("95osj3fUD7fo0mlYdDbncXz4VD2igvf6"),
+		cfg:        cfg,
+		jwtHandler: newJwtHandler(),
 	}
 }
 
@@ -94,6 +95,11 @@ func (oh *OAuth2WechatHandler) Callback(ctx *gin.Context) {
 	}
 
 	err = oh.setJWTToken(ctx, u.Id)
+	if err != nil {
+		return
+	}
+
+	err = oh.setRefreshToken(ctx, u.Id)
 	if err != nil {
 		return
 	}
