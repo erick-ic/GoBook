@@ -2,18 +2,23 @@ package middleware
 
 import (
 	"GoBook/internal/web"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type LoginJWTMiddlewareBuilder struct {
 	paths []string
+	cmd   redis.Cmdable
 }
 
-func NewLoginJWTMiddlewareBuilder() *LoginJWTMiddlewareBuilder {
-	return &LoginJWTMiddlewareBuilder{}
+func NewLoginJWTMiddlewareBuilder(cmd redis.Cmdable) *LoginJWTMiddlewareBuilder {
+	return &LoginJWTMiddlewareBuilder{
+		cmd: cmd,
+	}
 }
 
 func (ljb *LoginJWTMiddlewareBuilder) IgnorePaths(path string) *LoginJWTMiddlewareBuilder {
@@ -69,6 +74,14 @@ func (ljb *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 		//	}
 		//	ctx.Header("x-jwt-token", tokenStr)
 		//}
+
+		//查看ssid是否有效
+		cnt, err := ljb.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", claims.Ssid)).Result()
+		if err != nil || cnt > 0 {
+			//Redis问题或已退出登录
+			ctx.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
 
 		//可在ctx中传递数据，进行读写操作。
 		ctx.Set("claims", claims)

@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -26,9 +28,10 @@ type UserHandler struct {
 	svc           service.UserService
 	codeSvc       service.CodeService
 	jwtHandler
+	cmd redis.Cmdable
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler {
+func NewUserHandler(svc service.UserService, codeSvc service.CodeService, cmd redis.Cmdable) *UserHandler {
 	emailExp := regexp.MustCompile(emailRegexPattern, regexp.None)
 	passwordExp := regexp.MustCompile(passwordRegexPattern, regexp.None)
 
@@ -38,6 +41,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserH
 		svc:           svc,
 		codeSvc:       codeSvc,
 		jwtHandler:    newJwtHandler(),
+		cmd:           cmd,
 	}
 }
 
@@ -53,6 +57,7 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 	ug.POST("/sendSMSCode", uh.SendSMSCode)
 	ug.POST("/loginSMS", uh.LoginSMSCode)
 	ug.POST("/refreshToken", uh.RefreshToken)
+	ug.POST("/logout", uh.LogoutJWT)
 }
 
 // SignUp 注册
@@ -158,17 +163,25 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 		return
 	}
 
-	//登录成功
-	err = uh.setJWTToken(ctx, u.Id)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		return
-	}
-
-	err = uh.setRefreshToken(ctx, u.Id)
+	////登录成功
+	//err = uh.setJWTToken(ctx, u.Id)
+	//if err != nil {
+	//	ctx.JSON(http.StatusInternalServerError, Result{
+	//		Code: 5,
+	//		Msg:  "系统错误！",
+	//	})
+	//	return
+	//}
+	//
+	//err = uh.setRefreshToken(ctx, u.Id)
+	//if err != nil {
+	//	ctx.JSON(http.StatusInternalServerError, Result{
+	//		Code: 5,
+	//		Msg:  "系统错误！",
+	//	})
+	//	return
+	//}
+	err = uh.setLoginToken(ctx, u.Id)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -242,15 +255,22 @@ func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
 		return
 	}
 	// 5. 生成 JWT 并写入响应头
-	if err := uh.setJWTToken(ctx, user.Id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		return
-	}
-
-	if err := uh.setRefreshToken(ctx, user.Id); err != nil {
+	//if err := uh.setJWTToken(ctx, user.Id); err != nil {
+	//	ctx.JSON(http.StatusInternalServerError, Result{
+	//		Code: 5,
+	//		Msg:  "系统错误！",
+	//	})
+	//	return
+	//}
+	//
+	//if err := uh.setRefreshToken(ctx, user.Id); err != nil {
+	//	ctx.JSON(http.StatusInternalServerError, Result{
+	//		Code: 5,
+	//		Msg:  "系统错误！",
+	//	})
+	//	return
+	//}
+	if err := uh.setLoginToken(ctx, user.Id); err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
 			Msg:  "系统错误！",
@@ -408,8 +428,16 @@ func (uh *UserHandler) RefreshToken(ctx *gin.Context) {
 		return
 	}
 
+	//查看ssid是否有效
+	cnt, err := uh.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", rc.Ssid)).Result()
+	if err != nil || cnt > 0 {
+		//Redis问题或已退出登录
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
 	//3.更新token
-	err = uh.setJWTToken(ctx, rc.Uid)
+	err = uh.setJWTToken(ctx, rc.Uid, rc.Ssid)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
@@ -417,5 +445,30 @@ func (uh *UserHandler) RefreshToken(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, Result{
 		Code: 0,
 		Msg:  "token刷新成功～",
+	})
+}
+
+// LogoutJWT 退出登录
+func (uh *UserHandler) LogoutJWT(ctx *gin.Context) {
+	ctx.Header("X-JWT-Token", "")
+	ctx.Header("x-refresh-token", "")
+
+	//val := ctx.MustGet("claims")
+	//claims, _ := val.(*UserClaims)
+	claims := ctx.MustGet("claims").(*UserClaims)
+	//标记ssid
+	err := uh.cmd.Set(ctx, fmt.Sprintf("users:ssid:%s", claims.Ssid),
+		"", time.Hour*24*7).Err()
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "退出登录失败！",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "退出登录成功～",
 	})
 }

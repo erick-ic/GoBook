@@ -25,7 +25,7 @@ func InitMiddleware(redisClient redis.Cmdable) []gin.HandlerFunc {
 		//跨域中间件
 		handleCors(),
 		//路由中间件
-		middleware.NewLoginJWTMiddlewareBuilder().
+		middleware.NewLoginJWTMiddlewareBuilder(redisClient).
 			IgnorePaths("/users/login").
 			IgnorePaths("/users/signup").
 			IgnorePaths("/users/sendSMSCode").

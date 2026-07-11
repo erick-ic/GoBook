@@ -8,7 +8,6 @@ import (
 	"GoBook/internal/service"
 	"GoBook/internal/service/sms/memory"
 	"GoBook/internal/web"
-	"GoBook/internal/web/middleware"
 	"strings"
 	"time"
 
@@ -116,12 +115,12 @@ func initWebServer() *gin.Engine {
 	//		Build(),
 	//)
 
-	server.Use(middleware.NewLoginJWTMiddlewareBuilder().
-		IgnorePaths("/users/login").
-		IgnorePaths("/users/signup").
-		IgnorePaths("/users/sendSMSCode").
-		IgnorePaths("/users/loginSMS").
-		Build())
+	//server.Use(middleware.NewLoginJWTMiddlewareBuilder().
+	//	IgnorePaths("/users/login").
+	//	IgnorePaths("/users/signup").
+	//	IgnorePaths("/users/sendSMSCode").
+	//	IgnorePaths("/users/loginSMS").
+	//	Build())
 
 	return server
 }
@@ -138,7 +137,7 @@ func initUser(db *gorm.DB, redisClient redis.Cmdable) *web.UserHandler {
 	codeRepo := repository.NewCodeRepository(codeCache)
 	codeSvc := service.NewCodeService(codeRepo, memoSMS)
 
-	u := web.NewUserHandler(svc, codeSvc)
+	u := web.NewUserHandler(svc, codeSvc, redisClient)
 	return u
 }
 
