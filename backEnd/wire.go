@@ -20,6 +20,9 @@ func InitWebServer() *gin.Engine {
 		//基础的三方依赖
 		ioc.InitDB, ioc.InitRedis,
 
+		//提供 *zap.Logger
+		ioc.InitLogger,
+
 		//初始化DAO，缓存
 		dao.NewUserDAO,
 		cache.NewUserCache,

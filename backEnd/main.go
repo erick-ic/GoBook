@@ -3,6 +3,7 @@ package main
 import (
 	"GoBook/config"
 	"GoBook/internal/repository/dao"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	_ "github.com/spf13/viper/remote"
+	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -33,8 +35,10 @@ func main() {
 	//InitViper1()
 	//InitViperV2()
 	//InitViperV3()
-	//InitViperRemote()
-	InitWatchViper()
+	InitViperRemote()
+	//InitWatchViper()
+
+	//initLogger()
 	server := InitWebServer()
 
 	server.Run(":8080")
@@ -246,4 +250,33 @@ func InitWatchViper() {
 	if err != nil {
 		panic(fmt.Errorf("fatal error config fileV5: %w", err))
 	}
+}
+
+func initLogger() {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	zap.ReplaceGlobals(logger)
+
+	zap.L().Info("logger Info...")
+	//2026-07-12T19:36:15.092+0800	INFO	backEnd/main.go:262	logger Info...
+
+	zap.L().Error("系统错误！", zap.Error(err))
+	//2026-07-12T19:36:15.093+0800	ERROR	backEnd/main.go:264	系统错误！
+	//main.initLogger
+	///Users/erick/Code/Golang/GoBook/backEnd/main.go:264
+	//main.main
+	///Users/erick/Code/Golang/GoBook/backEnd/main.go:41
+	//runtime.main
+	///opt/homebrew/opt/go/libexec/src/runtime/proc.go:290
+
+	zap.L().Info(
+		"Info:",
+		zap.Error(errors.New("Info--Error")),
+		zap.Int64("Info-Int64-id:", 21),
+		zap.Any("Info--key:", "hello zap any"),
+	)
+	//2026-07-12T19:36:15.093+0800	INFO	backEnd/main.go:266	Info:
+	//	{"error": "Info--Error", "Info-Int64-id:": 21, "Info--key:": "hello zap any"}
 }

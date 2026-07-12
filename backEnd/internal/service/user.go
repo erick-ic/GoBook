@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -24,12 +25,14 @@ type UserService interface {
 	FindOrCreateByWechat(ctx context.Context, wechatInfo domain.WechatInfo) (domain.User, error)
 }
 type userService struct {
-	repo repository.UserRepository
+	repo   repository.UserRepository
+	logger *zap.Logger
 }
 
-func NewUserService(repo repository.UserRepository) UserService {
+func NewUserService(repo repository.UserRepository, l *zap.Logger) UserService {
 	return &userService{
-		repo: repo,
+		repo:   repo,
+		logger: l,
 	}
 }
 
@@ -96,6 +99,12 @@ func (us *userService) FindOrCreate(ctx context.Context, phone string) (domain.U
 		// 如果错误不是“未找到”，说明要么找到了，要么DB出错了，直接返回
 		return u, err
 	}
+	//用法1：直接使用包变量
+	zap.L().Info("用户未注册", zap.String("phone", phone))
+
+	//用法2：使用注入的logger
+	us.logger.Info("用户未注册", zap.String("phone", phone))
+
 	// 2. 用户不存在，新建一个（仅赋值手机号，邮箱为空）
 	user := domain.User{
 		Phone: phone,
