@@ -3,12 +3,17 @@ package main
 import (
 	"GoBook/config"
 	"GoBook/internal/repository/dao"
+	"fmt"
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
+	_ "github.com/spf13/viper/remote"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -25,6 +30,11 @@ func main() {
 
 	//u.RegisterUsersRouters(server)
 
+	//InitViper1()
+	//InitViperV2()
+	//InitViperV3()
+	//InitViperRemote()
+	InitWatchViper()
 	server := InitWebServer()
 
 	server.Run(":8080")
@@ -163,4 +173,77 @@ func initRedis() *redis.Client {
 		Addr: config.Config.Redis.Addr,
 	})
 	return redisClient
+}
+
+func InitViperV1() {
+	//1.文件名
+	viper.SetConfigName("dev")
+
+	//2.确定文件dev的格式
+	viper.SetConfigType("yaml")
+
+	//确定文件的路径，可以指定多个路径
+	//当前目录下的config子目录
+	viper.AddConfigPath("./config")
+	//viper.AddConfigPath("$HOME/.appname")
+	//viper.AddConfigPath(".")
+
+	//读取文件到viper
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %w", err))
+	}
+}
+
+func InitViperV2() {
+	////设置默认值，dev.yaml没有db.mysql.dsn时生效，否则以该文件为准。
+	//viper.SetDefault("db.mysql.dsn",
+	//	"root:root@tcp(localhost:13316)/gobook?charset=utf8mb4&parseTime=True&loc=Local")
+
+	viper.SetConfigFile("./config/dev.yaml")
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config fileV2: %w", err))
+	}
+}
+
+func InitViperV3() {
+	//--config=config/dev.yaml
+	cFile := pflag.String("config", "./config/dev.yaml", "指定配置文件路径")
+	//从命名行解析
+	pflag.Parse()
+	viper.SetConfigFile(*cFile)
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config fileV3: %w", err))
+	}
+}
+
+func InitViperRemote() {
+	viper.SetConfigType("yaml")
+	err := viper.AddRemoteProvider("etcd3", "127.0.0.1:12379", "/backEnd")
+	if err != nil {
+		panic(err)
+	}
+	err = viper.ReadRemoteConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config fileV4: %w", err))
+	}
+}
+
+func InitWatchViper() {
+	cFile := pflag.String("config", "./config/dev.yaml", "指定配置文件路径")
+	pflag.Parse()
+	viper.SetConfigFile(*cFile)
+
+	//实时监听配置变更
+	viper.WatchConfig()
+	viper.OnConfigChange(func(e fsnotify.Event) {
+		fmt.Println(e.Name, e.Op)
+	})
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config fileV5: %w", err))
+	}
 }
