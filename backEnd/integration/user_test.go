@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"GoBook/integration/startup"
 	"GoBook/internal/web"
 	"GoBook/ioc"
 	"bytes"
@@ -17,7 +18,7 @@ import (
 
 func TestUserHandler_e2e_SendLoginSMSCode(t *testing.T) {
 	//构建完整的Gin引擎，依赖于wire生成的依赖注入
-	server := InitWebServer()
+	server := startup.InitWebServer()
 	//初始化redis
 	rdb := ioc.InitRedis()
 

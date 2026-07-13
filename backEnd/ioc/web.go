@@ -16,11 +16,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func InitGin(mdls []gin.HandlerFunc, hdl *web.UserHandler, oauth2 *web.OAuth2WechatHandler) *gin.Engine {
+func InitGin(mdls []gin.HandlerFunc, hdl *web.UserHandler, oauth2 *web.OAuth2WechatHandler, article *web.ArticleHandler) *gin.Engine {
 	server := gin.Default()
 	server.Use(mdls...)
 	hdl.RegisterUsersRouters(server)
 	oauth2.RegisterWechatRouters(server)
+	article.RegisterRouters(server)
 	return server
 }
 

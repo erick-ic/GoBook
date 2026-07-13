@@ -25,16 +25,19 @@ func InitWebServer() *gin.Engine {
 
 		//初始化DAO，缓存
 		dao.NewUserDAO,
+		dao.NewArticleDAO,
 		cache.NewUserCache,
 		cache.NewCodeCache,
 
 		//初始化repo
 		repository.NewUserRepository,
 		repository.NewCodeRepository,
+		repository.NewArticleRepository,
 
 		//初始化service
 		service.NewUserService,
 		service.NewCodeService,
+		service.NewArticleService,
 		ioc.InitSMSService,
 		ioc.InitOAuth2WechatService,
 		ioc.NewOAuth2WechatConfig,
@@ -43,6 +46,7 @@ func InitWebServer() *gin.Engine {
 		//初始化handler
 		web.NewUserHandler,
 		web.NewOAuth2WechatHandler,
+		web.NewArticleHandler,
 
 		//初始化gin、路由、中间件
 		ioc.InitGin,
