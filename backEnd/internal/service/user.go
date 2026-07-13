@@ -3,10 +3,10 @@ package service
 import (
 	"GoBook/internal/domain"
 	"GoBook/internal/repository"
+	"GoBook/pkg/logger"
 	"context"
 	"errors"
 
-	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -26,10 +26,10 @@ type UserService interface {
 }
 type userService struct {
 	repo   repository.UserRepository
-	logger *zap.Logger
+	logger logger.LoggerV1
 }
 
-func NewUserService(repo repository.UserRepository, l *zap.Logger) UserService {
+func NewUserService(repo repository.UserRepository, l logger.LoggerV1) UserService {
 	return &userService{
 		repo:   repo,
 		logger: l,
@@ -99,11 +99,14 @@ func (us *userService) FindOrCreate(ctx context.Context, phone string) (domain.U
 		// 如果错误不是“未找到”，说明要么找到了，要么DB出错了，直接返回
 		return u, err
 	}
-	//用法1：直接使用包变量
-	zap.L().Info("用户未注册", zap.String("phone", phone))
+	////用法1：直接使用包变量
+	//zap.L().Info("用户未注册", zap.String("phone", phone))
 
-	//用法2：使用注入的logger
-	us.logger.Info("用户未注册", zap.String("phone", phone))
+	////用法2：使用注入的logger
+	//us.logger.Info("用户未注册", zap.String("phone", phone))
+
+	//用法3：
+	us.logger.Info("用户未注册", logger.String("phone", phone))
 
 	// 2. 用户不存在，新建一个（仅赋值手机号，邮箱为空）
 	user := domain.User{

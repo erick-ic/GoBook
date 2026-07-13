@@ -2,6 +2,7 @@ package wechat
 
 import (
 	"GoBook/internal/domain"
+	"GoBook/pkg/logger"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ type service struct {
 	appId     string
 	appSecret string
 	client    *http.Client
+	logger    logger.LoggerV1
 }
 
 //标准写法：
@@ -33,11 +35,12 @@ type service struct {
 //	}
 //}
 
-func NewService(appId, appSecret string) Service {
+func NewService(appId, appSecret string, logger logger.LoggerV1) Service {
 	return &service{
 		appId:     appId,
 		appSecret: appSecret,
 		client:    http.DefaultClient, //直接初始化
+		logger:    logger,
 	}
 }
 
