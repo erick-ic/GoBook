@@ -2,13 +2,16 @@ package ioc
 
 import (
 	"GoBook/internal/repository/dao"
+	"GoBook/pkg/logger"
+	"time"
 
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	gormLogger "gorm.io/gorm/logger"
 )
 
-func InitDB() *gorm.DB {
+func InitDB(l logger.LoggerV1) *gorm.DB {
 	//数据库连接
 	//dsn := "root:root@tcp(localhost:13316)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
 	//dsn := "root:root@tcp(gobook-mysql:11309)/gobook?charset=utf8mb4&parseTime=True&loc=Local"
@@ -34,7 +37,19 @@ func InitDB() *gorm.DB {
 		panic(err)
 	}
 
-	db, err := gorm.Open(mysql.Open(cfg.DSN))
+	db, err := gorm.Open(mysql.Open(cfg.DSN), &gorm.Config{
+		Logger: gormLogger.New(
+			//自定义 Writer
+			gormLoggerFunc(l.Debug),
+			gormLogger.Config{
+				//慢查询阈值，超过阈值，记录
+				SlowThreshold: time.Millisecond * 10,
+				//忽略“记录未找到”错误
+				IgnoreRecordNotFoundError: true,
+				//日志级别
+				LogLevel: gormLogger.Info,
+			}),
+	})
 	if err != nil {
 		//一旦初始化过程报错，应用就取消启动
 		//panic相当于整个goroutine结束
@@ -47,4 +62,10 @@ func InitDB() *gorm.DB {
 		panic(err)
 	}
 	return db
+}
+
+type gormLoggerFunc func(msg string, fields ...logger.Field)
+
+func (g gormLoggerFunc) Printf(msg string, args ...interface{}) {
+	g(msg, logger.Field{Key: "args", Value: args})
 }
