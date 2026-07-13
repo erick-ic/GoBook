@@ -32,7 +32,7 @@ func main() {
 
 	//u.RegisterUsersRouters(server)
 
-	//InitViper1()
+	//InitViperV1()
 	//InitViperV2()
 	//InitViperV3()
 	InitViperRemote()

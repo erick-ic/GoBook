@@ -4,7 +4,10 @@ import (
 	"GoBook/internal/web"
 	ijwt "GoBook/internal/web/jwt"
 	"GoBook/internal/web/middleware"
+	"GoBook/internal/web/middleware/logger"
 	"GoBook/pkg/ginx/middleware/ratelimit"
+	logger2 "GoBook/pkg/logger"
+	"context"
 	"strings"
 	"time"
 
@@ -21,10 +24,13 @@ func InitGin(mdls []gin.HandlerFunc, hdl *web.UserHandler, oauth2 *web.OAuth2Wec
 	return server
 }
 
-func InitMiddleware(redisClient redis.Cmdable, jwtHandler ijwt.JWTHandler) []gin.HandlerFunc {
+func InitMiddleware(redisClient redis.Cmdable, jwtHandler ijwt.JWTHandler, l logger2.LoggerV1) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		//跨域中间件
 		handleCors(),
+		logger.NewMiddlewareBuilder(func(ctx context.Context, al *logger.AccessLog) {
+			l.Debug("HTTP请求", logger2.Field{Key: "al", Value: al})
+		}).SetAllowReqBody().Build(),
 		//路由中间件
 		middleware.NewLoginJWTMiddlewareBuilder(jwtHandler).
 			IgnorePaths("/users/login").
