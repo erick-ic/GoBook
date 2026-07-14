@@ -4,6 +4,7 @@ package startup
 
 import (
 	"GoBook/internal/repository"
+	"GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
 	"GoBook/internal/service"
@@ -43,7 +44,7 @@ func InitWebServer() *gin.Engine {
 		//初始化repo
 		//repository.NewUserRepository,
 		repository.NewCodeRepository,
-		repository.NewArticleRepository,
+		article.NewArticleRepository,
 
 		//初始化service
 		//service.NewUserService,
@@ -70,7 +71,7 @@ func InitArticleHandler() *web.ArticleHandler {
 	wire.Build(
 		thirdProviderSet,
 		dao.NewArticleDAO,
-		repository.NewArticleRepository,
+		article.NewArticleRepository,
 		service.NewArticleService,
 		web.NewArticleHandler,
 	)

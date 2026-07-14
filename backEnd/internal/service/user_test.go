@@ -4,6 +4,7 @@ import (
 	"GoBook/internal/domain"
 	"GoBook/internal/repository"
 	repomocks "GoBook/internal/repository/mocks"
+	"GoBook/pkg/logger"
 	"context"
 	"errors"
 	"net/http"
@@ -114,7 +115,7 @@ func Test_userService_Login(t *testing.T) {
 			defer ctrl.Finish()
 
 			//func NewUserService(repo repository.UserRepository) UserService
-			svc := NewUserService(tc.mock(ctrl))
+			svc := NewUserService(tc.mock(ctrl), &logger.NopLogger{})
 			u, err := svc.Login(tc.ctx, tc.email, tc.password)
 			assert.Equal(t, tc.expectErr, err)
 			assert.Equal(t, tc.expectUser, u)

@@ -25,15 +25,11 @@ func NewArticleHandler(svc service.ArticleService, l logger.LoggerV1) *ArticleHa
 func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 	group := server.Group("/articles")
 	group.POST("/edit", ah.Edit)
+	group.POST("/publish", ah.Publish)
 }
 
 func (ah *ArticleHandler) Edit(ctx *gin.Context) {
-	type Req struct {
-		Id      int64  `json:"id"`
-		Title   string `json:"title"`
-		Content string `json:"content"`
-	}
-	var req Req
+	var req ArticleReq
 	if err := ctx.Bind(&req); err != nil {
 		return
 	}
@@ -52,14 +48,7 @@ func (ah *ArticleHandler) Edit(ctx *gin.Context) {
 		return
 	}
 
-	id, err := ah.svc.Save(ctx, domain.Article{
-		Id:      req.Id,
-		Title:   req.Title,
-		Content: req.Content,
-		Author: domain.Author{
-			Id: claims.Uid,
-		},
-	})
+	id, err := ah.svc.Save(ctx, req.toDomain(claims.Uid))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -73,4 +62,58 @@ func (ah *ArticleHandler) Edit(ctx *gin.Context) {
 		Msg:  "编辑成功～",
 		Data: id,
 	})
+}
+
+func (ah *ArticleHandler) Publish(ctx *gin.Context) {
+	var req ArticleReq
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+	//检测输入
+	//...
+
+	c, ok := ctx.Get("claims")
+	claims := c.(*ijwt.UserClaims)
+
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		ah.l.Error("未发现用户session信息")
+		return
+	}
+
+	id, err := ah.svc.Publish(ctx, req.toDomain(claims.Uid))
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		ah.l.Error("发表帖子失败", logger.Error(err))
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "OK～",
+		Data: id,
+	})
+
+}
+
+type ArticleReq struct {
+	Id      int64  `json:"id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+func (ar *ArticleReq) toDomain(uid int64) domain.Article {
+	return domain.Article{
+		Id:      ar.Id,
+		Title:   ar.Title,
+		Content: ar.Content,
+		Author: domain.Author{
+			Id: uid,
+		},
+	}
 }

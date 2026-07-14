@@ -13,3 +13,10 @@ func Error(err error) Field {
 		Value: err,
 	}
 }
+
+func Int64(key string, value int64) Field {
+	return Field{
+		Key:   key,
+		Value: value,
+	}
+}

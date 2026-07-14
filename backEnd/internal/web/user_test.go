@@ -216,7 +216,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 
 			//构造真实 Handler：
 			server := gin.Default()
-			h := NewUserHandler(tc.mock(ctrl), nil)
+			h := NewUserHandler(tc.mock(ctrl), nil, nil, nil)
 			//注册路由
 			h.RegisterUsersRouters(server)
 
