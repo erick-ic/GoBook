@@ -20,6 +20,7 @@ type LoggerV1 interface {
 	Info(msg string, args ...Field)
 	Warn(msg string, args ...Field)
 	Error(msg string, args ...Field)
+	With(args ...Field) LoggerV1
 }
 
 type Field struct {

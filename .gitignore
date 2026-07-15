@@ -23,3 +23,7 @@ frontEnd/.env*.local
 .env
 *.pem
 *.key
+
+# ========== Mock ==========
+*.mock.go
+wire_gen.go

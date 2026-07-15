@@ -4,6 +4,8 @@ import (
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
 	ijwt "GoBook/internal/web/jwt"
+	"GoBook/pkg/ginx"
+	"GoBook/pkg/logger"
 	"errors"
 	"fmt"
 	"net/http"
@@ -29,9 +31,16 @@ type UserHandler struct {
 	codeSvc       service.CodeService
 	ijwt.JWTHandler
 	cmd redis.Cmdable
+	l   logger.LoggerV1
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeService, cmd redis.Cmdable, jwtHandler ijwt.JWTHandler) *UserHandler {
+func NewUserHandler(
+	svc service.UserService,
+	codeSvc service.CodeService,
+	cmd redis.Cmdable,
+	jwtHandler ijwt.JWTHandler,
+	l logger.LoggerV1,
+) *UserHandler {
 	emailExp := regexp.MustCompile(emailRegexPattern, regexp.None)
 	passwordExp := regexp.MustCompile(passwordRegexPattern, regexp.None)
 
@@ -42,6 +51,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeService, cmd re
 		codeSvc:       codeSvc,
 		JWTHandler:    jwtHandler,
 		cmd:           cmd,
+		l:             l,
 	}
 }
 
@@ -49,13 +59,19 @@ func (uh *UserHandler) RegisterUsersRouters(server *gin.Engine) {
 	ug := server.Group("/users")
 	ug.POST("/signup", uh.SignUp)
 	//ug.POST("/login", uh.Login)
-	ug.POST("/login", uh.LoginJWT)
+	//ug.POST("/login", uh.LoginJWT)
+	ug.POST("/login", ginx.WrapBodyV1[LoginReq](uh.LoginJWT))
 	ug.POST("/create", uh.Create)
 	ug.POST("/delete", uh.Delete)
 	ug.POST("/edit", uh.Edit)
 	ug.GET("/profile", uh.Profile)
 	ug.POST("/sendSMSCode", uh.SendSMSCode)
-	ug.POST("/loginSMS", uh.LoginSMSCode)
+	//ug.POST("/loginSMS", uh.LoginSMSCode)
+	ug.POST("/loginSMS",
+		ginx.WrapBody[LoginSMSReq](
+			uh.l.With(logger.String("method", "loginSMS")),
+			uh.LoginSMSCode,
+		))
 	ug.POST("/refreshToken", uh.RefreshToken)
 	ug.POST("/logout", uh.LogoutJWT)
 }
@@ -127,40 +143,44 @@ func (uh *UserHandler) SignUp(ctx *gin.Context) {
 
 }
 
+type LoginReq struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 // LoginJWT 登录
-func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
-	type LoginReq struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	var req LoginReq
-	if err := ctx.Bind(&req); err != nil {
-		return
-	}
+func (uh *UserHandler) LoginJWT(ctx *gin.Context, req LoginReq) (Result, error) {
+	//var req LoginReq
+	//if err := ctx.Bind(&req); err != nil {
+	//	return
+	//}
 
 	u, err := uh.svc.Login(ctx, req.Email, req.Password)
 
 	if errors.Is(err, service.ErrInvalidUserPassword) {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "账号/邮箱或密码错误！",
-		})
-		return
+		//ctx.JSON(http.StatusOK, Result{
+		//	Code: 5,
+		//	Msg:  "账号/邮箱或密码错误！",
+		//})
+		//return
+		return Result{Code: 5, Msg: "账号/邮箱或密码错误！"}, nil
 	}
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "用户不存在！",
-		})
-		return
+		//ctx.JSON(http.StatusOK, Result{
+		//	Code: 5,
+		//	Msg:  "用户不存在！",
+		//})
+		//return
+		return Result{Code: 5, Msg: "用户不存在！"}, nil
 	}
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		return
+		//ctx.JSON(http.StatusInternalServerError, Result{
+		//	Code: 5,
+		//	Msg:  "系统错误！",
+		//})
+		//return
+		return Result{Code: 5, Msg: "系统错误！"}, nil
 	}
 
 	////登录成功
@@ -183,40 +203,47 @@ func (uh *UserHandler) LoginJWT(ctx *gin.Context) {
 	//}
 	err = uh.SetLoginToken(ctx, u.Id)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		return
+		//ctx.JSON(http.StatusInternalServerError, Result{
+		//	Code: 5,
+		//	Msg:  "系统错误！",
+		//})
+		//return
+		return Result{Code: 5, Msg: "系统错误！"}, nil
 	}
 
-	ctx.JSON(http.StatusOK, Result{
-		Code: 0,
-		Msg:  "登录成功～",
-	})
-	return
+	//ctx.JSON(http.StatusOK, Result{
+	//	Code: 0,
+	//	Msg:  "登录成功～",
+	//})
+	//return
+	return Result{Code: 0, Msg: "登录成功～"}, nil
+}
+
+type LoginSMSReq struct {
+	Phone string `json:"phone"`
+	Code  string `json:"code"`
 }
 
 // LoginSMSCode 验证码登录
-func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
+func (uh *UserHandler) LoginSMSCode(ctx *gin.Context, req LoginSMSReq) (ginx.Result, error) {
 	// 1. 绑定请求参数（Phone + Code）
-	type LoginReq struct {
-		Phone string `json:"phone"`
-		Code  string `json:"code"`
-	}
+	//type LoginReq struct {
+	//	Phone string `json:"phone"`
+	//	Code  string `json:"code"`
+	//}
 	const biz = "login"
-	var req LoginReq
-	if err := ctx.Bind(&req); err != nil {
-		return
-	}
-	// 2. 业务校验：手机号非空
-	if req.Phone == "" {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "手机号码错误！",
-		})
-		return
-	}
+	//var req LoginReq
+	//if err := ctx.Bind(&req); err != nil {
+	//	return
+	//}
+	//// 2. 业务校验：手机号非空
+	//if req.Phone == "" {
+	//	ctx.JSON(http.StatusOK, Result{
+	//		Code: 5,
+	//		Msg:  "手机号码错误！",
+	//	})
+	//	return
+	//}
 	// 3. 调用验证码服务校验（biz="login" 区分业务场景）
 	ok, err := uh.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
 	if err != nil {
@@ -228,31 +255,35 @@ func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
 				Msg:  "验证码校验错误，请重新获取验证码",
 			})
 		default:
-			ctx.JSON(http.StatusInternalServerError, Result{
-				Code: 5,
-				Msg:  "系统错误！",
-			})
+			//ctx.JSON(http.StatusInternalServerError, Result{
+			//	Code: 5,
+			//	Msg:  "系统错误！",
+			//})
+			//zap.L().Error("手机号码登录失败", zap.Error(err))
+			//return ginx.Result{Code: 5, Msg: "手机号码登录失败"}, err
+			return Result{Code: 5, Msg: "手机号码登录失败"},
+				fmt.Errorf("手机号码登录失败 %w", err)
 		}
-		return
 	}
 
 	if !ok {
-		// 验证码不匹配或已过期
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "验证码错误！",
-		})
-		return
+		//// 验证码不匹配或已过期
+		//ctx.JSON(http.StatusOK, ginx.Result{
+		//	Code: 4,
+		//	Msg:  "验证码错误！",
+		//})
+		return Result{Code: 4, Msg: "验证码错误!"}, nil
 	}
 	// 4. 【核心】查找或创建用户（传入手机号）
 	//查找或创建该用户
 	user, err := uh.svc.FindOrCreate(ctx, req.Phone)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		return
+		//ctx.JSON(http.StatusInternalServerError, Result{
+		//	Code: 5,
+		//	Msg:  "系统错误！",
+		//})
+		return Result{Code: 5, Msg: "系统错误！"},
+			fmt.Errorf("登录或注册用户失败！ %w", err)
 	}
 	// 5. 生成 JWT 并写入响应头
 	//if err := uh.setJWTToken(ctx, user.Id); err != nil {
@@ -271,18 +302,20 @@ func (uh *UserHandler) LoginSMSCode(ctx *gin.Context) {
 	//	return
 	//}
 	if err := uh.SetLoginToken(ctx, user.Id); err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		return
+		//ctx.JSON(http.StatusInternalServerError, Result{
+		//	Code: 5,
+		//	Msg:  "系统错误！",
+		//})
+		return Result{Code: 5, Msg: "系统错误！"},
+			fmt.Errorf("系统错误！ %w", err)
 	}
 
 	// 6. 成功返回
-	ctx.JSON(http.StatusOK, Result{
-		Code: 0,
-		Msg:  "登录成功～",
-	})
+	//ctx.JSON(http.StatusOK, Result{
+	//	Code: 0,
+	//	Msg:  "登录成功～",
+	//})
+	return Result{Code: 0, Msg: "登录成功～"}, nil
 }
 
 // SendSMSCode 发送验证码
