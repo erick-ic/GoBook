@@ -7,6 +7,7 @@ import (
 	"GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
+	article2 "GoBook/internal/repository/dao/article"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
 	ijwt "GoBook/internal/web/jwt"
@@ -26,7 +27,9 @@ func InitWebServer() *gin.Engine {
 
 		//初始化DAO，缓存
 		dao.NewUserDAO,
-		dao.NewArticleDAO,
+		article2.NewArticleDAO,
+		article2.NewAuthorDAO,
+		article2.NewReaderDAO,
 		cache.NewUserCache,
 		cache.NewCodeCache,
 

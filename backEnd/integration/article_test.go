@@ -2,7 +2,8 @@ package integration
 
 import (
 	"GoBook/integration/startup"
-	"GoBook/internal/repository/dao"
+	"GoBook/internal/domain"
+	newDAO "GoBook/internal/repository/dao/article"
 	ijwt "GoBook/internal/web/jwt"
 	"bytes"
 	"context"
@@ -77,20 +78,21 @@ func (s *ArticleTestSuite) TestEdit() {
 			},
 			after: func(t *testing.T) {
 				//验证数据库数据
-				var article dao.Article
+				var article newDAO.Article
 				err := s.db.Where("id = ?", 1).First(&article).Error
 				assert.NoError(t, err)
 				assert.True(t, article.Ctime > 0)
 				assert.True(t, article.Utime > 0)
 				article.Ctime = 0
 				article.Utime = 0
-				assert.Equal(t, dao.Article{
+				assert.Equal(t, newDAO.Article{
 					Id:       1,
 					Title:    "我的标题",
 					Content:  "我的内容",
 					AuthorId: 21,
 					Ctime:    0,
 					Utime:    0,
+					Status:   domain.ArticleStatusUnPublished.ToUint8(),
 				}, article)
 			},
 			expectCode: http.StatusOK,
@@ -109,31 +111,33 @@ func (s *ArticleTestSuite) TestEdit() {
 			},
 			before: func(t *testing.T) {
 				//模拟已经存在的数据
-				err := s.db.Create(&dao.Article{
+				err := s.db.Create(&newDAO.Article{
 					Id:       2,
 					Title:    "我的标题",
 					Content:  "我的内容",
 					AuthorId: 21,
 					Ctime:    111,
 					Utime:    222,
+					Status:   domain.ArticleStatusPublished.ToUint8(),
 				}).Error
 				assert.NoError(t, err)
 			},
 			after: func(t *testing.T) {
 				//验证数据库数据
-				var article dao.Article
+				var article newDAO.Article
 				err := s.db.Where("id = ?", 2).First(&article).Error
 				assert.NoError(t, err)
 
 				//确保已经更新
 				assert.True(t, article.Utime > 222)
 				article.Utime = 0
-				assert.Equal(t, dao.Article{
+				assert.Equal(t, newDAO.Article{
 					Id:       2,
 					Title:    "我的标题111",
 					Content:  "我的内容111",
 					AuthorId: 21,
 					Ctime:    111,
+					Status:   domain.ArticleStatusUnPublished.ToUint8(),
 				}, article)
 			},
 			expectCode: http.StatusOK,
@@ -152,7 +156,7 @@ func (s *ArticleTestSuite) TestEdit() {
 			},
 			before: func(t *testing.T) {
 				//模拟已经存在的数据
-				err := s.db.Create(&dao.Article{
+				err := s.db.Create(&newDAO.Article{
 					Id:      3,
 					Title:   "我的标题",
 					Content: "我的内容",
@@ -160,21 +164,23 @@ func (s *ArticleTestSuite) TestEdit() {
 					AuthorId: 1,
 					Ctime:    111,
 					Utime:    222,
+					Status:   domain.ArticleStatusPublished.ToUint8(),
 				}).Error
 				assert.NoError(t, err)
 			},
 			after: func(t *testing.T) {
 				//验证数据库数据
-				var article dao.Article
+				var article newDAO.Article
 				err := s.db.Where("id = ?", 3).First(&article).Error
 				assert.NoError(t, err)
-				assert.Equal(t, dao.Article{
+				assert.Equal(t, newDAO.Article{
 					Id:       3,
 					Title:    "我的标题",
 					Content:  "我的内容",
 					AuthorId: 1,
 					Ctime:    111,
 					Utime:    222,
+					Status:   domain.ArticleStatusPublished.ToUint8(),
 				}, article)
 			},
 			expectCode: http.StatusInternalServerError,

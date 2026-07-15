@@ -7,6 +7,7 @@ import (
 	"GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
+	article2 "GoBook/internal/repository/dao/article"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
 	"GoBook/ioc"
@@ -39,12 +40,16 @@ func InitWebServer() *gin.Engine {
 		//dao.NewUserDAO,
 		//cache.NewUserCache,
 		cache.NewCodeCache,
-		dao.NewArticleDAO,
+		article2.NewArticleDAO,
+		article2.NewAuthorDAO,
+		article2.NewReaderDAO,
 
 		//初始化repo
 		//repository.NewUserRepository,
 		repository.NewCodeRepository,
 		article.NewArticleRepository,
+		//article.NewArticleAuthorRepository,
+		//article.NewArticleReaderRepository,
 
 		//初始化service
 		//service.NewUserService,
@@ -70,7 +75,9 @@ func InitWebServer() *gin.Engine {
 func InitArticleHandler() *web.ArticleHandler {
 	wire.Build(
 		thirdProviderSet,
-		dao.NewArticleDAO,
+		article2.NewArticleDAO,
+		article2.NewAuthorDAO,
+		article2.NewReaderDAO,
 		article.NewArticleRepository,
 		service.NewArticleService,
 		web.NewArticleHandler,
