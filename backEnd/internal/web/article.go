@@ -16,15 +16,23 @@ import (
 
 // ArticleHandler 文章处理器，处理文章相关的HTTP请求
 type ArticleHandler struct {
-	svc service.ArticleService // 文章服务接口
-	l   logger.LoggerV1        // 日志记录器
+	svc      service.ArticleService // 文章服务接口
+	interSvc service.InteractiveService
+	l        logger.LoggerV1 // 日志记录器
+	biz      string
 }
 
 // NewArticleHandler 创建文章处理器实例
-func NewArticleHandler(svc service.ArticleService, l logger.LoggerV1) *ArticleHandler {
+func NewArticleHandler(
+	svc service.ArticleService,
+	l logger.LoggerV1,
+	interSvc service.InteractiveService,
+) *ArticleHandler {
 	return &ArticleHandler{
-		svc: svc,
-		l:   l,
+		svc:      svc,
+		interSvc: interSvc,
+		l:        l,
+		biz:      "article",
 	}
 }
 
@@ -38,6 +46,140 @@ func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 	group.POST("/list",
 		ginx.WrapBodyAndToken[ListReq, ijwt.UserClaims](ah.ArticleList))
 	group.GET("/detail/:id", ah.Detail)
+
+	pubGroup := server.Group("/pub")
+	pubGroup.GET("/:id", ah.PubDetail)
+	pubGroup.POST("/like", ah.Like)
+
+}
+func (ah *ArticleHandler) Like(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	articleId, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 4,
+			Msg:  "id 参数错误！",
+		})
+		ah.l.Warn("查询文章失败，id格式不对！",
+			logger.String("articleId", idStr),
+			logger.Error(err),
+		)
+		return
+	}
+
+	c, ok := ctx.Get("claims")
+	claims := c.(*ijwt.UserClaims)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		ah.l.Warn("查询文章失败，系统错误！",
+			logger.Int64("articleId", articleId),
+			logger.Int64("userId", claims.Uid),
+			logger.Error(err),
+		)
+		return
+	}
+
+	err = ah.interSvc.Like(ctx, ah.biz, articleId, claims.Uid)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "OK~",
+	})
+}
+
+func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	articleId, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 4,
+			Msg:  "id 参数错误！",
+		})
+		ah.l.Warn("查询文章失败，id格式不对！",
+			logger.String("articleId", idStr),
+			logger.Error(err),
+		)
+		return
+	}
+
+	c, ok := ctx.Get("claims")
+	claims := c.(*ijwt.UserClaims)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		ah.l.Warn("查询文章失败，系统错误！",
+			logger.Int64("articleId", articleId),
+			logger.Int64("userId", claims.Uid),
+			logger.Error(err),
+		)
+		return
+	}
+
+	res, err := ah.svc.GetByPubId(ctx, articleId)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误",
+		})
+		ah.l.Error("查询文章失败",
+			logger.Int64("articleId", articleId),
+			logger.Error(err),
+		)
+		return
+	}
+
+	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId, claims.Uid)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误",
+		})
+		ah.l.Error("查询文章失败",
+			logger.Int64("articleId", articleId),
+			logger.Error(err),
+		)
+		return
+	}
+
+	vo := ArticleVO{
+		Id:         res.Id,
+		Title:      res.Title,
+		Content:    res.Content,
+		ReadCnt:    iter.ReadCnt,
+		LikeCnt:    iter.LikeCnt,
+		CollectCnt: iter.CollectCnt,
+
+		Status: res.Status.ToUint8(),
+		Ctime:  res.Ctime.Format(time.DateTime),
+		Utime:  res.Utime.Format(time.DateTime),
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Msg:  "OK~",
+		Data: vo,
+	})
+
+	//增加阅读计数：开启一个goroutine异步执行。
+	go func() {
+		er := ah.interSvc.IncrReadCnt(ctx, ah.biz, articleId)
+		if er != nil {
+			ah.l.Error("增加阅读计数失败！",
+				logger.Int64("articleId", articleId),
+				logger.Error(er))
+			return
+		}
+	}()
 }
 
 // Edit 处理文章编辑请求，保存草稿到制作库

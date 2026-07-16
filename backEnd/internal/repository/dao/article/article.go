@@ -18,6 +18,7 @@ type ArticleDAO interface {
 	SyncStatus(ctx context.Context, article Article) (int64, error) // 事务内同步更新两库的文章状态
 	GetByAuthor(ctx context.Context, authorId int64, offset int, limit int) ([]Article, error)
 	GetById(ctx context.Context, id int64) (Article, error)
+	GetByPubId(ctx context.Context, id int64) (PublishArticle, error)
 }
 
 // articleDAO 文章数据访问对象实现类
@@ -73,7 +74,7 @@ func (ad *articleDAO) Sync(ctx context.Context, article Article) (int64, error) 
 		id  = article.Id
 		err error
 	)
-	err = ad.db.Transaction(func(tx *gorm.DB) error {
+	err = ad.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		txDAO := NewArticleDAO(tx)
 		if id > 0 {
 			err = txDAO.UpdateById(ctx, article)
@@ -83,7 +84,26 @@ func (ad *articleDAO) Sync(ctx context.Context, article Article) (int64, error) 
 		if err != nil {
 			return err
 		}
-		return txDAO.Upsert(ctx, PublishArticle{Article: article})
+		return txDAO.Upsert(ctx, PublishArticle(article))
+		//article.Id = id
+		//now := time.Now().UnixMilli()
+		//pubArticle := PublishArticle(article)
+		//pubArticle.Ctime = now
+		//pubArticle.Utime = now
+		//err = tx.Clauses(clause.OnConflict{
+		//	// 对MySQL不起效，但是可以兼容别的方言
+		//	// INSERT xxx ON DUPLICATE KEY SET `title`=?
+		//	// 别的方言：
+		//	// sqlite INSERT XXX ON CONFLICT DO UPDATES WHERE
+		//	Columns: []clause.Column{{Name: "id"}},
+		//	DoUpdates: clause.Assignments(map[string]interface{}{
+		//		"title":   pubArticle.Title,
+		//		"content": pubArticle.Content,
+		//		"utime":   now,
+		//		"status":  pubArticle.Status,
+		//	}),
+		//}).Create(&pubArticle).Error
+		//return err
 	})
 	return id, err
 }
@@ -152,13 +172,26 @@ func (ad *articleDAO) GetById(ctx context.Context, id int64) (Article, error) {
 	return article, err
 }
 
+func (ad *articleDAO) GetByPubId(ctx context.Context, id int64) (PublishArticle, error) {
+	var pubArt PublishArticle
+	err := ad.db.WithContext(ctx).Where("id = ?", id).Find(&pubArt).Error
+	return pubArt, err
+}
+
 // Article 文章数据库实体（制作库表）
 type Article struct {
-	Id       int64  `gorm:"primaryKey;autoIncrement"` // 主键ID
-	Title    string `gorm:"type=varchar(1024)"`       // 文章标题
-	Content  string `gorm:"type=BLOB"`                // 文章内容（大文本）
-	AuthorId int64  `gorm:"index"`                    // 作者ID（索引）
-	Status   uint8  // 文章状态
-	Ctime    int64  // 创建时间（毫秒时间戳）
-	Utime    int64  // 更新时间（毫秒时间戳）
+	Id      int64  `gorm:"primaryKey;autoIncrement"` // 主键ID
+	Title   string `gorm:"type=varchar(1024)"`       // 文章标题
+	Content string `gorm:"type=BLOB"`                // 文章内容（大文本）
+
+	AuthorId int64 `gorm:"index"` // 作者ID（索引）
+	Status   uint8 // 文章状态
+	Ctime    int64 // 创建时间（毫秒时间戳）
+	Utime    int64 // 更新时间（毫秒时间戳）
 }
+
+type PublishArticle Article
+
+//type PublishArticle struct {
+//	Article
+//}

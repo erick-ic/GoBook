@@ -29,6 +29,6 @@ func (r readerDAO) Upsert(ctx context.Context, article Article) error {
 }
 
 // PublishArticle 线上表实体，嵌套Article结构体，用于读者访问的已发布文章
-type PublishArticle struct {
-	Article
-}
+//type PublishArticle struct {
+//	Article
+//}

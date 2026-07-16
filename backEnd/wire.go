@@ -4,7 +4,7 @@ package main
 
 import (
 	"GoBook/internal/repository"
-	"GoBook/internal/repository/article"
+	articleRepo "GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
 	article2 "GoBook/internal/repository/dao/article"
@@ -27,22 +27,26 @@ func InitWebServer() *gin.Engine {
 
 		//初始化DAO，缓存
 		dao.NewUserDAO,
+		dao.NewInteractiveDAO,
 		article2.NewArticleDAO,
 		article2.NewAuthorDAO,
 		article2.NewReaderDAO,
 		cache.NewUserCache,
 		cache.NewCodeCache,
 		cache.NewRedisArticleCache,
+		cache.NewRedisInteractiveCache,
 
 		//初始化repo
 		repository.NewUserRepository,
 		repository.NewCodeRepository,
-		article.NewArticleRepository,
+		repository.NewInteractiveRepository,
+		articleRepo.NewArticleRepository,
 
 		//初始化service
 		service.NewUserService,
 		service.NewCodeService,
 		service.NewArticleService,
+		service.NewInteractiveService,
 		ioc.InitSMSService,
 		ioc.InitOAuth2WechatService,
 		ioc.NewOAuth2WechatConfig,

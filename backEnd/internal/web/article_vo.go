@@ -16,14 +16,21 @@ type ListReq struct {
 }
 
 type ArticleVO struct {
-	Id       int64  `json:"id"`
-	Title    string `json:"title"`
-	Abstract string `json:"abstract"`
-	Content  string `json:"content"`
-	Status   uint8  `json:"status"`
-	Author   string `json:"author"`
-	Ctime    string `json:"ctime"`
-	Utime    string `json:"utime"`
+	Id         int64  `json:"id,omitempty"`
+	Title      string `json:"title,omitempty"`
+	Abstract   string `json:"abstract,omitempty"`
+	Content    string `json:"content,omitempty"`
+	AuthorId   int64  `json:"authorId,omitempty"`
+	AuthorName string `json:"authorName,omitempty"`
+	Status     uint8  `json:"status,omitempty"`
+	Ctime      string `json:"ctime,omitempty"`
+	Utime      string `json:"utime,omitempty"`
+
+	ReadCnt    int64 `json:"readCnt"`
+	LikeCnt    int64 `json:"likeCnt"`
+	CollectCnt int64 `json:"collectCnt"`
+	Liked      bool  `json:"liked"`
+	Collected  bool  `json:"collected"`
 }
 
 // toDomain 将请求结构体转换为领域模型，注入作者ID

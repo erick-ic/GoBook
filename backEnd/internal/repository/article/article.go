@@ -20,6 +20,7 @@ type ArticleRepository interface {
 	SyncStatus(ctx context.Context, article domain.Article) (int64, error) // 同步更新两库的文章状态
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)
 	GetById(ctx context.Context, id int64) (domain.Article, error)
+	GetByPubId(ctx context.Context, id int64) (domain.Article, error)
 }
 
 // articleRepository 文章仓储实现类
@@ -186,6 +187,15 @@ func (ar *articleRepository) GetById(ctx context.Context, id int64) (domain.Arti
 	return data, nil
 }
 
+func (ar *articleRepository) GetByPubId(ctx context.Context, id int64) (domain.Article, error) {
+	res, err := ar.dao.GetByPubId(ctx, id)
+	if err != nil {
+		return domain.Article{}, err
+	}
+	data := ar.toDomain(newDAO.Article(res))
+	return data, nil
+}
+
 // toDomain 将DAO实体转换为领域模型
 func (ar *articleRepository) toDomain(article newDAO.Article) domain.Article {
 	return domain.Article{
@@ -209,15 +219,5 @@ func (ar *articleRepository) toEntity(article domain.Article) newDAO.Article {
 		Content:  article.Content,
 		AuthorId: article.Author.Id,
 		Status:   article.Status.ToUint8(),
-	}
-}
-
-func NewArticleRepo(
-	dao newDAO.ArticleDAO,
-	l logger.LoggerV1,
-) ArticleRepository {
-	return &articleRepository{
-		dao: dao,
-		l:   l,
 	}
 }

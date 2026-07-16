@@ -5,6 +5,8 @@ import (
 	"GoBook/internal/repository/article"
 	"GoBook/pkg/logger"
 	"context"
+
+	"github.com/gin-gonic/gin"
 )
 
 // ArticleService 文章服务接口，定义文章的核心业务操作
@@ -14,6 +16,7 @@ type ArticleService interface {
 	Withdraw(ctx context.Context, article domain.Article) (int64, error) // 撤回文章
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)
 	GetById(ctx context.Context, id int64) (domain.Article, error)
+	GetByPubId(ctx *gin.Context, id int64) (domain.Article, error)
 }
 
 // articleService 文章服务实现类
@@ -118,4 +121,8 @@ func (as *articleService) List(ctx context.Context, authorId int64, offset int, 
 
 func (as *articleService) GetById(ctx context.Context, id int64) (domain.Article, error) {
 	return as.repo.GetById(ctx, id)
+}
+
+func (as *articleService) GetByPubId(ctx *gin.Context, id int64) (domain.Article, error) {
+	return as.repo.GetByPubId(ctx, id)
 }
