@@ -32,6 +32,7 @@ func InitWebServer() *gin.Engine {
 		article2.NewReaderDAO,
 		cache.NewUserCache,
 		cache.NewCodeCache,
+		cache.NewRedisArticleCache,
 
 		//初始化repo
 		repository.NewUserRepository,

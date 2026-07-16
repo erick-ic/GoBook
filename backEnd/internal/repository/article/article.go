@@ -2,9 +2,13 @@ package article
 
 import (
 	"GoBook/internal/domain"
+	"GoBook/internal/repository/cache"
 	newDAO "GoBook/internal/repository/dao/article"
+	"GoBook/pkg/logger"
 	"context"
+	"time"
 
+	"github.com/ecodeclub/ekit/slice"
 	"gorm.io/gorm"
 )
 
@@ -14,14 +18,18 @@ type ArticleRepository interface {
 	Update(ctx context.Context, article domain.Article) error              // 更新文章
 	Sync(ctx context.Context, article domain.Article) (int64, error)       // 同步文章到制作库和线上库
 	SyncStatus(ctx context.Context, article domain.Article) (int64, error) // 同步更新两库的文章状态
+	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)
+	GetById(ctx context.Context, id int64) (domain.Article, error)
 }
 
 // articleRepository 文章仓储实现类
 type articleRepository struct {
-	dao       newDAO.ArticleDAO // 文章DAO，操作单一库
-	authorDAO newDAO.AuthorDAO  // 制作库DAO（预留V1版本）
-	readerDAO newDAO.ReaderDAO  // 线上库DAO（预留V1版本）
-	db        *gorm.DB          // 数据库连接（预留V2事务版本）
+	dao          newDAO.ArticleDAO // 文章DAO，操作单一库
+	authorDAO    newDAO.AuthorDAO  // 制作库DAO（预留V1版本）
+	readerDAO    newDAO.ReaderDAO  // 线上库DAO（预留V1版本）
+	db           *gorm.DB          // 数据库连接（预留V2事务版本）
+	articleCache cache.ArticleCache
+	l            logger.LoggerV1
 }
 
 // NewArticleRepository 创建文章仓储实例
@@ -29,16 +37,24 @@ func NewArticleRepository(
 	dao newDAO.ArticleDAO,
 	authorDAO newDAO.AuthorDAO,
 	readerDAO newDAO.ReaderDAO,
+	articleCache cache.ArticleCache,
+	l logger.LoggerV1,
 ) ArticleRepository {
 	return &articleRepository{
-		dao:       dao,
-		authorDAO: authorDAO,
-		readerDAO: readerDAO,
+		dao:          dao,
+		authorDAO:    authorDAO,
+		readerDAO:    readerDAO,
+		articleCache: articleCache,
+		l:            l,
 	}
 }
 
 // Create 创建文章，将领域模型转换为DAO实体后插入数据库
 func (ar *articleRepository) Create(ctx context.Context, article domain.Article) (int64, error) {
+	defer func() {
+		//清空缓存
+		ar.articleCache.DelFirstPage(ctx, article.Author.Id)
+	}()
 	id, err := ar.dao.Insert(ctx, newDAO.Article{
 		Title:    article.Title,
 		Content:  article.Content,
@@ -50,6 +66,10 @@ func (ar *articleRepository) Create(ctx context.Context, article domain.Article)
 
 // Update 更新文章，将领域模型转换为DAO实体后更新数据库
 func (ar *articleRepository) Update(ctx context.Context, article domain.Article) error {
+	defer func() {
+		//清空缓存
+		ar.articleCache.DelFirstPage(ctx, article.Author.Id)
+	}()
 	return ar.dao.UpdateById(ctx, newDAO.Article{
 		Id:       article.Id,
 		Title:    article.Title,
@@ -61,11 +81,19 @@ func (ar *articleRepository) Update(ctx context.Context, article domain.Article)
 
 // Sync 同步文章到制作库和线上库，事务内完成（委托给DAO层处理）
 func (ar *articleRepository) Sync(ctx context.Context, article domain.Article) (int64, error) {
+	defer func() {
+		//清空缓存
+		ar.articleCache.DelFirstPage(ctx, article.Author.Id)
+	}()
 	return ar.dao.Sync(ctx, ar.toEntity(article))
 }
 
 // SyncStatus 同步更新两库的文章状态，事务内完成（委托给DAO层处理）
 func (ar *articleRepository) SyncStatus(ctx context.Context, article domain.Article) (int64, error) {
+	defer func() {
+		//清空缓存
+		ar.articleCache.DelFirstPage(ctx, article.Author.Id)
+	}()
 	return ar.dao.SyncStatus(ctx, ar.toEntity(article))
 }
 
@@ -119,6 +147,60 @@ func (ar *articleRepository) SyncStatus(ctx context.Context, article domain.Arti
 //	return id, err
 //}
 
+func (ar *articleRepository) List(ctx context.Context, authorId int64, offset int, limit int) ([]domain.Article, error) {
+	//缓存设计
+	//1.缓存第一页
+	if offset == 0 && limit <= 100 {
+		data, err := ar.articleCache.GetFirstPage(ctx, authorId)
+		if err == nil {
+			return data, nil
+		}
+	}
+
+	res, err := ar.dao.GetByAuthor(ctx, authorId, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+	data := slice.Map[newDAO.Article, domain.Article](
+		res,
+		func(idx int, src newDAO.Article) domain.Article {
+			return ar.toDomain(src)
+		},
+	)
+
+	//回写缓存，可以同步也可以异步
+	go func() {
+		err = ar.articleCache.SetFirstPage(ctx, authorId, data)
+		ar.l.Error("回写缓存失败！", logger.Error(err))
+	}()
+
+	return data, nil
+}
+
+func (ar *articleRepository) GetById(ctx context.Context, id int64) (domain.Article, error) {
+	res, err := ar.dao.GetById(ctx, id)
+	if err != nil {
+		return domain.Article{}, err
+	}
+	data := ar.toDomain(res)
+	return data, nil
+}
+
+// toDomain 将DAO实体转换为领域模型
+func (ar *articleRepository) toDomain(article newDAO.Article) domain.Article {
+	return domain.Article{
+		Id:      article.Id,
+		Title:   article.Title,
+		Content: article.Content,
+		Status:  domain.ArticleStatus(article.Status),
+		Author: domain.Author{
+			Id: article.AuthorId,
+		},
+		Ctime: time.UnixMilli(article.Ctime),
+		Utime: time.UnixMilli(article.Utime),
+	}
+}
+
 // toEntity 将领域模型转换为DAO实体
 func (ar *articleRepository) toEntity(article domain.Article) newDAO.Article {
 	return newDAO.Article{
@@ -127,5 +209,15 @@ func (ar *articleRepository) toEntity(article domain.Article) newDAO.Article {
 		Content:  article.Content,
 		AuthorId: article.Author.Id,
 		Status:   article.Status.ToUint8(),
+	}
+}
+
+func NewArticleRepo(
+	dao newDAO.ArticleDAO,
+	l logger.LoggerV1,
+) ArticleRepository {
+	return &articleRepository{
+		dao: dao,
+		l:   l,
 	}
 }

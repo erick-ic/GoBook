@@ -16,6 +16,8 @@ type ArticleDAO interface {
 	Sync(ctx context.Context, article Article) (int64, error)       // 事务内同步文章到制作库和线上库
 	Upsert(ctx context.Context, article PublishArticle) error       // 线上库插入或更新（UPSERT）
 	SyncStatus(ctx context.Context, article Article) (int64, error) // 事务内同步更新两库的文章状态
+	GetByAuthor(ctx context.Context, authorId int64, offset int, limit int) ([]Article, error)
+	GetById(ctx context.Context, id int64) (Article, error)
 }
 
 // articleDAO 文章数据访问对象实现类
@@ -131,6 +133,23 @@ func (ad *articleDAO) SyncStatus(ctx context.Context, article Article) (int64, e
 				"utime":  now,
 			}).Error
 	})
+}
+
+func (ad *articleDAO) GetByAuthor(ctx context.Context, authorId int64, offset int, limit int) ([]Article, error) {
+	var articles []Article
+	err := ad.db.WithContext(ctx).Model(&articles).
+		Where("author_id = ?", authorId).
+		Offset(offset).
+		Limit(limit).
+		Order("utime DESC").
+		Find(&articles).Error
+	return articles, err
+}
+
+func (ad *articleDAO) GetById(ctx context.Context, id int64) (Article, error) {
+	var article Article
+	err := ad.db.WithContext(ctx).Where("id=?", id).Find(&article).Error
+	return article, err
 }
 
 // Article 文章数据库实体（制作库表）

@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // Article 文章领域模型
 type Article struct {
 	Id      int64         // 文章ID
@@ -7,6 +9,17 @@ type Article struct {
 	Content string        // 文章内容
 	Author  Author        // 文章作者
 	Status  ArticleStatus // 文章状态
+	Ctime   time.Time
+	Utime   time.Time
+}
+
+func (a Article) Abstract() string {
+	//考虑中文问题，截取前100字
+	cs := []rune(a.Content)
+	if len(cs) < 100 {
+		return a.Content
+	}
+	return string(cs[:100])
 }
 
 // Author 作者领域模型

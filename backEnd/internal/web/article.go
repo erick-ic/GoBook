@@ -4,9 +4,13 @@ import (
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
 	ijwt "GoBook/internal/web/jwt"
+	"GoBook/pkg/ginx"
 	"GoBook/pkg/logger"
 	"net/http"
+	"strconv"
+	"time"
 
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"
 )
 
@@ -30,6 +34,10 @@ func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 	group.POST("/edit", ah.Edit)         // 编辑/保存文章接口
 	group.POST("/publish", ah.Publish)   // 发表文章接口
 	group.POST("/withdraw", ah.Withdraw) // 撤回文章接口
+
+	group.POST("/list",
+		ginx.WrapBodyAndToken[ListReq, ijwt.UserClaims](ah.ArticleList))
+	group.GET("/detail/:id", ah.Detail)
 }
 
 // Edit 处理文章编辑请求，保存草稿到制作库
@@ -137,21 +145,70 @@ func (ah *ArticleHandler) Withdraw(ctx *gin.Context) {
 	})
 }
 
-// ArticleReq 文章请求结构体
-type ArticleReq struct {
-	Id      int64  `json:"id"`      // 文章ID，新增时为0
-	Title   string `json:"title"`   // 文章标题
-	Content string `json:"content"` // 文章内容
+func (ah *ArticleHandler) ArticleList(ctx *gin.Context, req ListReq, uc ijwt.UserClaims) (Result, error) {
+	res, err := ah.svc.List(ctx, uc.Uid, req.offset, req.limit)
+	if err != nil {
+		return Result{Code: 5, Msg: "系统错误！"}, nil
+	}
+
+	data := slice.Map[domain.Article, ArticleVO](
+		res,
+		func(idx int, src domain.Article) ArticleVO {
+			return ArticleVO{
+				Id:       src.Id,
+				Title:    src.Title,
+				Abstract: src.Abstract(),
+				Status:   src.Status.ToUint8(),
+				//列表不需要返回content
+				//Content: src.Content,
+				//列表不需要返回author
+				//Author: src.Author.Name,
+				Ctime: src.Ctime.Format(time.DateTime),
+				Utime: src.Utime.Format(time.DateTime),
+			}
+		})
+	return Result{
+		Code: 0,
+		Data: data,
+	}, nil
 }
 
-// toDomain 将请求结构体转换为领域模型，注入作者ID
-func (ar *ArticleReq) toDomain(uid int64) domain.Article {
-	return domain.Article{
-		Id:      ar.Id,
-		Title:   ar.Title,
-		Content: ar.Content,
-		Author: domain.Author{
-			Id: uid,
-		},
+func (ah *ArticleHandler) Detail(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 4,
+			Msg:  "id 参数错误！",
+		})
+		ah.l.Warn("查询文章失败，id 错误！",
+			logger.String("id", idStr),
+			logger.Error(err),
+		)
+		return
 	}
+	res, err := ah.svc.GetById(ctx, id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误",
+		})
+		ah.l.Error("查询文章失败",
+			logger.Int64("id", id),
+			logger.Error(err),
+		)
+		return
+	}
+	vo := ArticleVO{
+		Id:      res.Id,
+		Title:   res.Title,
+		Content: res.Content,
+		Status:  res.Status.ToUint8(),
+		Ctime:   res.Ctime.Format(time.DateTime),
+		Utime:   res.Utime.Format(time.DateTime),
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Code: 0,
+		Data: vo,
+	})
 }

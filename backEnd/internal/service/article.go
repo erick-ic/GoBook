@@ -12,6 +12,8 @@ type ArticleService interface {
 	Save(ctx context.Context, article domain.Article) (int64, error)     // 保存文章草稿
 	Publish(ctx context.Context, article domain.Article) (int64, error)  // 发表文章
 	Withdraw(ctx context.Context, article domain.Article) (int64, error) // 撤回文章
+	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)
+	GetById(ctx context.Context, id int64) (domain.Article, error)
 }
 
 // articleService 文章服务实现类
@@ -41,12 +43,6 @@ func (as *articleService) Save(ctx context.Context, article domain.Article) (int
 func (as *articleService) Publish(ctx context.Context, article domain.Article) (int64, error) {
 	article.Status = domain.ArticleStatusPublished
 	return as.repo.Sync(ctx, article)
-}
-
-// Withdraw 撤回文章，将状态改为未发表，同步更新两库状态
-func (as *articleService) Withdraw(ctx context.Context, article domain.Article) (int64, error) {
-	article.Status = domain.ArticleStatusUnPublished
-	return as.repo.SyncStatus(ctx, article)
 }
 
 // ArticleServiceV1 文章服务V1版本接口，用于演示非事务双写方案
@@ -108,4 +104,18 @@ func (as *articleServiceV1) PublishV1(ctx context.Context, article domain.Articl
 			logger.Error(err))
 	}
 	return id, err
+}
+
+// Withdraw 撤回文章，将状态改为未发表，同步更新两库状态
+func (as *articleService) Withdraw(ctx context.Context, article domain.Article) (int64, error) {
+	article.Status = domain.ArticleStatusUnPublished
+	return as.repo.SyncStatus(ctx, article)
+}
+
+func (as *articleService) List(ctx context.Context, authorId int64, offset int, limit int) ([]domain.Article, error) {
+	return as.repo.List(ctx, authorId, offset, limit)
+}
+
+func (as *articleService) GetById(ctx context.Context, id int64) (domain.Article, error) {
+	return as.repo.GetById(ctx, id)
 }
