@@ -39,8 +39,15 @@ func main() {
 	//InitWatchViper()
 
 	//initLogger()
-	server := InitWebServer()
+	app := InitApp()
+	for _, c := range app.Consumers {
+		err := c.Start()
+		if err != nil {
+			panic(err)
+		}
+	}
 
+	server := app.Server
 	server.Run(":8080")
 }
 

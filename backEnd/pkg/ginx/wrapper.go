@@ -102,12 +102,14 @@ func WrapBodyAndToken[Req any, Cls jwt.Claims](fn func(ctx *gin.Context, req Req
 
 		val, ok := ctx.Get("claims")
 		if !ok {
+			// claims 不存在
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
 		c, ok := val.(Cls)
 		if !ok {
+			//类型不匹配
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}

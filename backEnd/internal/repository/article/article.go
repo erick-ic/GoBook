@@ -151,12 +151,15 @@ func (ar *articleRepository) SyncStatus(ctx context.Context, article domain.Arti
 func (ar *articleRepository) List(ctx context.Context, authorId int64, offset int, limit int) ([]domain.Article, error) {
 	//缓存设计
 	//1.缓存第一页
-	if offset == 0 && limit <= 100 {
-		data, err := ar.articleCache.GetFirstPage(ctx, authorId)
-		if err == nil {
-			return data, nil
-		}
-	}
+	//if offset == 0 && limit <= 100 {
+	//	data, err := ar.articleCache.GetFirstPage(ctx, authorId)
+	//	if err == nil {
+	//		ar.l.Debug("命中缓存",
+	//			logger.Int64("authorId", authorId),
+	//			logger.Int64("len", int64(len(data))))
+	//		return data, nil
+	//	}
+	//}
 
 	res, err := ar.dao.GetByAuthor(ctx, authorId, offset, limit)
 	if err != nil {

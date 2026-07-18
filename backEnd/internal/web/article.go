@@ -44,7 +44,8 @@ func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 	group.POST("/withdraw", ah.Withdraw) // 撤回文章接口
 
 	group.POST("/list",
-		ginx.WrapBodyAndToken[ListReq, ijwt.UserClaims](ah.ArticleList))
+		ginx.WrapBodyAndToken[ListReq, *ijwt.UserClaims](ah.ArticleList))
+
 	group.GET("/detail/:id", ah.Detail)
 
 	pubGroup := server.Group("/pub")
@@ -126,7 +127,7 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 		return
 	}
 
-	res, err := ah.svc.GetByPubId(ctx, articleId)
+	res, err := ah.svc.GetByPubId(ctx, articleId, claims.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -190,9 +191,14 @@ func (ah *ArticleHandler) Edit(ctx *gin.Context) {
 	}
 
 	c, ok := ctx.Get("claims")
-	claims := c.(*ijwt.UserClaims)
-
 	if !ok {
+		// claims 不存在
+		return
+	}
+
+	claims, ok := c.(*ijwt.UserClaims)
+	if !ok {
+		// 类型不匹配
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
 			Msg:  "系统错误！",
@@ -287,8 +293,8 @@ func (ah *ArticleHandler) Withdraw(ctx *gin.Context) {
 	})
 }
 
-func (ah *ArticleHandler) ArticleList(ctx *gin.Context, req ListReq, uc ijwt.UserClaims) (Result, error) {
-	res, err := ah.svc.List(ctx, uc.Uid, req.offset, req.limit)
+func (ah *ArticleHandler) ArticleList(ctx *gin.Context, req ListReq, uc *ijwt.UserClaims) (Result, error) {
+	res, err := ah.svc.List(ctx, uc.Uid, req.Offset, req.Limit)
 	if err != nil {
 		return Result{Code: 5, Msg: "系统错误！"}, nil
 	}

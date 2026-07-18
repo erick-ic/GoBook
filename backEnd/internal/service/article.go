@@ -2,6 +2,7 @@ package service
 
 import (
 	"GoBook/internal/domain"
+	events "GoBook/internal/events/article"
 	"GoBook/internal/repository/article"
 	"GoBook/pkg/logger"
 	"context"
@@ -16,18 +17,20 @@ type ArticleService interface {
 	Withdraw(ctx context.Context, article domain.Article) (int64, error) // 撤回文章
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)
 	GetById(ctx context.Context, id int64) (domain.Article, error)
-	GetByPubId(ctx *gin.Context, id int64) (domain.Article, error)
+	GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error)
 }
 
 // articleService 文章服务实现类
 type articleService struct {
-	repo article.ArticleRepository // 文章仓储接口
+	repo     article.ArticleRepository // 文章仓储接口
+	producer events.Producer
 }
 
 // NewArticleService 创建文章服务实例
-func NewArticleService(repo article.ArticleRepository) ArticleService {
+func NewArticleService(repo article.ArticleRepository, producer events.Producer) ArticleService {
 	return &articleService{
-		repo: repo,
+		repo:     repo,
+		producer: producer,
 	}
 }
 
@@ -46,6 +49,42 @@ func (as *articleService) Save(ctx context.Context, article domain.Article) (int
 func (as *articleService) Publish(ctx context.Context, article domain.Article) (int64, error) {
 	article.Status = domain.ArticleStatusPublished
 	return as.repo.Sync(ctx, article)
+}
+
+// Withdraw 撤回文章，将状态改为未发表，同步更新两库状态
+func (as *articleService) Withdraw(ctx context.Context, article domain.Article) (int64, error) {
+	article.Status = domain.ArticleStatusUnPublished
+	return as.repo.SyncStatus(ctx, article)
+}
+
+func (as *articleService) List(ctx context.Context, authorId int64, offset int, limit int) ([]domain.Article, error) {
+	return as.repo.List(ctx, authorId, offset, limit)
+}
+
+func (as *articleService) GetById(ctx context.Context, id int64) (domain.Article, error) {
+	return as.repo.GetById(ctx, id)
+}
+
+// GetByPubId 获取已发表的文章详情，同时异步发送阅读事件到 Kafka
+// 异步发送的好处：不阻塞用户的阅读请求，阅读量的更新有短暂延迟但最终一致
+func (as *articleService) GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error) {
+	art, err := as.repo.GetByPubId(ctx, articleId)
+	if err == nil {
+		// 查询成功后，异步发送阅读事件到 Kafka
+		// 消费者收到事件后会调用 InteractiveRepository.IncrReadCnt 增加阅读计数
+		go func() {
+			er := as.producer.ProduceReadEvent(
+				ctx,
+				events.ReadEvent{
+					ArticleId: articleId,
+					Uid:       Uid,
+				})
+			if er != nil {
+				// TODO: 写入日志
+			}
+		}()
+	}
+	return art, err
 }
 
 // ArticleServiceV1 文章服务V1版本接口，用于演示非事务双写方案
@@ -107,22 +146,4 @@ func (as *articleServiceV1) PublishV1(ctx context.Context, article domain.Articl
 			logger.Error(err))
 	}
 	return id, err
-}
-
-// Withdraw 撤回文章，将状态改为未发表，同步更新两库状态
-func (as *articleService) Withdraw(ctx context.Context, article domain.Article) (int64, error) {
-	article.Status = domain.ArticleStatusUnPublished
-	return as.repo.SyncStatus(ctx, article)
-}
-
-func (as *articleService) List(ctx context.Context, authorId int64, offset int, limit int) ([]domain.Article, error) {
-	return as.repo.List(ctx, authorId, offset, limit)
-}
-
-func (as *articleService) GetById(ctx context.Context, id int64) (domain.Article, error) {
-	return as.repo.GetById(ctx, id)
-}
-
-func (as *articleService) GetByPubId(ctx *gin.Context, id int64) (domain.Article, error) {
-	return as.repo.GetByPubId(ctx, id)
 }

@@ -27,11 +27,20 @@ func NewRedisArticleCache(client redis.Cmdable) ArticleCache {
 }
 
 func (r *RedisArticleCache) GetFirstPage(ctx context.Context, authorId int64) ([]domain.Article, error) {
-	//TODO implement me
-	panic("implement me")
+	data, err := r.client.Get(ctx, r.key(authorId)).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	var articles []domain.Article
+	err = json.Unmarshal(data, &articles)
+	return articles, err
 }
 
 func (r *RedisArticleCache) SetFirstPage(ctx context.Context, authorId int64, articles []domain.Article) error {
+	// 空结果不缓存，避免后续请求命中"空缓存"导致看不到新创建的文章
+	if len(articles) == 0 {
+		return nil
+	}
 	for i := 0; i < len(articles); i++ {
 		articles[i].Content = articles[i].Abstract()
 	}
@@ -47,6 +56,5 @@ func (r *RedisArticleCache) key(authorId int64) string {
 }
 
 func (r *RedisArticleCache) DelFirstPage(ctx context.Context, authorId int64) error {
-	//TODO implement me
-	panic("implement me")
+	return r.client.Del(ctx, r.key(authorId)).Err()
 }

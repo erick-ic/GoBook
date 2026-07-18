@@ -3,6 +3,7 @@
 package startup
 
 import (
+	article3 "GoBook/internal/events/article"
 	"GoBook/internal/repository"
 	"GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
@@ -40,6 +41,7 @@ func InitWebServer() *gin.Engine {
 		//dao.NewUserDAO,
 		//cache.NewUserCache,
 		cache.NewCodeCache,
+		cache.NewRedisArticleCache,
 		article2.NewArticleDAO,
 		article2.NewAuthorDAO,
 		article2.NewReaderDAO,
@@ -55,6 +57,16 @@ func InitWebServer() *gin.Engine {
 		//service.NewUserService,
 		service.NewCodeService,
 		service.NewArticleService,
+		service.NewInteractiveService,
+		dao.NewInteractiveDAO,
+		cache.NewRedisInteractiveCache,
+		repository.NewInteractiveRepository,
+
+		//kafka
+		ioc.InitSaramaClient,
+		ioc.InitSyncProducer,
+		article3.NewKafkaProducer,
+		wire.Bind(new(article3.Producer), new(*article3.KafkaProducer)),
 		InitSMSService,
 		InitOAuth2WechatService,
 		NewOAuth2WechatConfig,
@@ -78,9 +90,18 @@ func InitArticleHandler() *web.ArticleHandler {
 		article2.NewArticleDAO,
 		article2.NewAuthorDAO,
 		article2.NewReaderDAO,
+		cache.NewRedisArticleCache,
 		article.NewArticleRepository,
 		service.NewArticleService,
+		service.NewInteractiveService,
+		dao.NewInteractiveDAO,
+		cache.NewRedisInteractiveCache,
+		repository.NewInteractiveRepository,
 		web.NewArticleHandler,
+		ioc.InitSaramaClient,
+		ioc.InitSyncProducer,
+		article3.NewKafkaProducer,
+		wire.Bind(new(article3.Producer), new(*article3.KafkaProducer)),
 	)
 	return &web.ArticleHandler{}
 }
