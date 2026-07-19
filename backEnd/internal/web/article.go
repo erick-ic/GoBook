@@ -171,16 +171,18 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 		Data: vo,
 	})
 
-	//增加阅读计数：开启一个goroutine异步执行。
-	go func() {
-		er := ah.interSvc.IncrReadCnt(ctx, ah.biz, articleId)
-		if er != nil {
-			ah.l.Error("增加阅读计数失败！",
-				logger.Int64("articleId", articleId),
-				logger.Error(er))
-			return
-		}
-	}()
+	// 增加阅读计数：已改为通过 Kafka 异步解耦，由 Service 层 GetByPubId 发送阅读事件，
+	// 消费者收到事件后调用 IncrReadCnt 更新数据库和缓存。
+	// 以下直接调用方式已废弃，保留注释供参考：
+	// go func() {
+	// 	er := ah.interSvc.IncrReadCnt(ctx, ah.biz, articleId)
+	// 	if er != nil {
+	// 		ah.l.Error("增加阅读计数失败！",
+	// 			logger.Int64("articleId", articleId),
+	// 			logger.Error(er))
+	// 		return
+	// 	}
+	// }()
 }
 
 // Edit 处理文章编辑请求，保存草稿到制作库

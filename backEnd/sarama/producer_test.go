@@ -1,12 +1,16 @@
 package sarama
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/IBM/sarama"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TopicReadEvent Kafka 主题名称，用于文章阅读事件
+const TopicReadEvent = "article_read"
 
 // Kafka 集群地址（单个 broker，实际生产环境通常是多个）
 var addr = []string{"127.0.0.1:9094"}
@@ -145,4 +149,100 @@ func TestAsyncProducer(t *testing.T) {
 			t.Log("发送成功：", msg)
 		}
 	}
+}
+
+// 验证业务链路使用方法：
+//  1. 启动业务服务（go run main.go），让 InteractiveReadEventConsumer 开始监听 article_read topic
+//  2. 修改下面 evt 的 ArticleId 为数据库中实际存在的文章 ID
+//  3. 运行此测试：go test -run TestSyncProducer -v
+//  4. 观察服务日志：应看到无 "反序列消息体失败" 错误
+//  5. 查询数据库：SELECT read_cnt FROM interactives WHERE biz='article' AND biz_id=<ArticleId>
+//     阅读数应 +1，说明生产者→Kafka→消费者→IncrReadCnt 链路打通
+//
+// TestSyncProducerV1 同步发送
+func TestSyncProducerV1(test *testing.T) {
+	// 1. 创建 Sarama 配置对象
+	cfg := sarama.NewConfig()
+
+	// 2. 设置生产者参数
+	// Return.Successes 必须为 true，同步生产者需要等待成功响应
+	cfg.Producer.Return.Successes = true
+
+	// 指定分区策略：使用 HashPartitioner，根据 Key 的哈希值选择分区
+	// 这样可以确保相同 Key 的消息进入同一分区，从而保证消息顺序
+	cfg.Producer.Partitioner = sarama.NewHashPartitioner
+
+	// 3. 创建同步生产者（SyncProducer）
+	producer, err := sarama.NewSyncProducer(addr, cfg)
+	assert.NoError(test, err)
+
+	// 4. 构造合法的 ReadEvent 消息体
+	// 注意：必须用 json.Marshal 序列化结构体，不能手写字符串，
+	// 否则容易产出非法 JSON 导致业务消费者反序列化失败
+	evt := ReadEvent{
+		Uid:       123,
+		ArticleId: 1, // TODO: 改成数据库中实际存在的文章 ID
+	}
+	data, err := json.Marshal(evt)
+	assert.NoError(test, err)
+
+	// 5. 发送同步消息
+	// SendMessage 是同步方法，会阻塞直到 broker 确认（或超时）
+	// 返回：分区号、偏移量、错误
+	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
+		Topic: TopicReadEvent,           // 目标主题：article_read
+		Value: sarama.ByteEncoder(data), // 消息体：JSON 编码后的字节数组
+	})
+	assert.NoError(test, err)
+}
+
+// ReadEvent 阅读事件消息体
+// 字段定义与业务生产者 internal/events/article.ReadEvent 保持一致，
+// 不加 JSON tag，让 json.Marshal 用默认字段名（Uid/ArticleId）序列化，
+// 业务端 json.Unmarshal 会按字段名大小写不敏感匹配，确保正确反序列化。
+// 注意：不能加 `json:"uid"` 之类的 tag，否则会产出 {"uid":...,"article_id":...}，
+// 业务端 ReadEvent 没有对应 tag，article_id 字段匹配不上 ArticleId，导致 ArticleId=0
+type ReadEvent struct {
+	Uid       int64
+	ArticleId int64
+}
+
+// TestBatchProducer 批量发送消息
+func TestBatchProducer(test *testing.T) {
+	// 1. 创建 Sarama 配置对象
+	cfg := sarama.NewConfig()
+
+	// 2. 设置生产者参数
+	// Return.Successes 必须为 true，同步生产者需要等待成功响应
+	cfg.Producer.Return.Successes = true
+
+	// 指定分区策略：使用 HashPartitioner，根据 Key 的哈希值选择分区
+	// 这样可以确保相同 Key 的消息进入同一分区，从而保证消息顺序
+	cfg.Producer.Partitioner = sarama.NewHashPartitioner
+
+	// 3. 创建同步生产者（SyncProducer）
+	producer, err := sarama.NewSyncProducer(addr, cfg)
+	assert.NoError(test, err)
+
+	// 4. 构造合法的 ReadEvent 消息体
+	// 注意：必须用 json.Marshal 序列化结构体，不能手写字符串，
+	// 否则容易产出非法 JSON 导致业务消费者反序列化失败
+	evt := ReadEvent{
+		Uid:       123,
+		ArticleId: 1, // TODO: 改成数据库中实际存在的文章 ID
+	}
+	data, err := json.Marshal(evt)
+	assert.NoError(test, err)
+
+	// 5. 批量发送同步消息
+	// SendMessage 是同步方法，会阻塞直到 broker 确认（或超时）
+	// 返回：分区号、偏移量、错误
+	for i := 0; i < 100; i++ {
+		_, _, err = producer.SendMessage(&sarama.ProducerMessage{
+			Topic: TopicReadEvent,           // 目标主题：article_read
+			Value: sarama.ByteEncoder(data), // 消息体：JSON 编码后的字节数组
+			//Value: sarama.StringEncoder(`{"article_id": 1, "uid": 1}`), // 消息体：JSON 编码后的字节数组
+		})
+	}
+	assert.NoError(test, err)
 }

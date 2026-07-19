@@ -50,11 +50,11 @@ func TestConsumer(t *testing.T) {
 	// 参数3：实现了 ConsumerGroupHandler 接口的处理器
 	err = consumer.Consume(
 		ctx,
-		[]string{"test_topic"},
+		[]string{TopicReadEvent},
 		testConsumerGroupHandler{},
 	)
 	// 消费结束后打印耗时和错误
-	t.Log(err, time.Since(start).String())
+	t.Log("消费结束：", err, time.Since(start).String())
 }
 
 // testConsumerGroupHandler 实现 sarama.ConsumerGroupHandler 接口
@@ -67,9 +67,9 @@ func (t testConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) err
 	// ResetOffset：将消费偏移量重置到最早（OffsetOldest），即从头开始消费
 	// 等效于命令行：kafka-consumer-groups --reset-offsets --to-earliest
 	// 生产环境中通常不会每次都从头消费，这里仅作演示
-	partitions := session.Claims()["test_topic"]
+	partitions := session.Claims()[TopicReadEvent]
 	for _, part := range partitions {
-		session.ResetOffset("test_topic", part, sarama.OffsetOldest, "")
+		session.ResetOffset(TopicReadEvent, part, sarama.OffsetOldest, "")
 	}
 	log.Println("testConsumerGroupHandler.Setup")
 	return nil
@@ -125,7 +125,7 @@ func (t testConsumerGroupHandler) ConsumeClaim(
 				// 如果业务逻辑很慢（如写数据库），多条消息可以并行执行
 				eg.Go(func() error {
 					// 模拟耗时业务处理（如写数据库）
-					time.Sleep(time.Second * 5)
+					time.Sleep(time.Millisecond * 100)
 
 					// 重试逻辑（已预留，未实现）
 					// 生产环境中，消费失败通常需要重试或写入死信队列
@@ -149,6 +149,9 @@ func (t testConsumerGroupHandler) ConsumeClaim(
 			continue
 		}
 
+		if ctx.Err() != nil {
+			return nil
+		}
 		// 批量提交：只标记最后一条消息，Kafka 会自动提交该分区到此偏移量之前的所有消息
 		// 这是 MarkMessage 的核心特性：偏移量是单调递增的，标记 N 就等于标记 [0, N]
 		session.MarkMessage(lastMsg, "")
@@ -163,36 +166,36 @@ func (t testConsumerGroupHandler) ConsumeClaim(
 // 与 ConsumeClaim 的区别：
 //   - ConsumeClaimV1：逐条处理 → 逐条 MarkMessage（简单，低吞吐）
 //   - ConsumeClaim：  批量并发处理 → 批量 MarkMessage（复杂，高吞吐）
-func (t testConsumerGroupHandler) ConsumeClaimV1(
-	// session：与 Kafka 的会话，用于 MarkMessage 提交偏移量
-	// 生命周期：从分区分配（Setup）到分区释放（Cleanup）
-	session sarama.ConsumerGroupSession,
-	claim sarama.ConsumerGroupClaim,
-) error {
-	msgs := claim.Messages()
-	// for range 遍历消息 channel
-	// channel 关闭时（分区被释放），range 自动退出
-	for msg := range msgs {
-		// 实际业务中通常需要反序列化消息体：
-		// var bizMsg MyBizMsg
-		// err := json.Unmarshal(msg.Value, &bizMsg)
-		// if err != nil {
-		//     // 反序列化失败：消息格式异常，记日志后 skip（不重试，避免阻塞后续消息）
-		//     continue
-		// }
-		println("msg.value:", string(msg.Value))
-
-		// MarkMessage：标记消息已成功消费
-		// 注意：MarkMessage 不是立即提交到 Kafka！
-		// 它只是在本地图录偏移量，真正提交发生在：
-		//   - session 结束时（rebalance 触发）
-		//   - Sarama 内部定时自动提交（cfg.Consumer.Offsets.AutoCommit.Interval）
-		session.MarkMessage(msg, "")
-	}
-	// msgs channel 关闭，分区被释放，退出消费
-	return nil
-
-}
+//func (t testConsumerGroupHandler) ConsumeClaimV1(
+//	// session：与 Kafka 的会话，用于 MarkMessage 提交偏移量
+//	// 生命周期：从分区分配（Setup）到分区释放（Cleanup）
+//	session sarama.ConsumerGroupSession,
+//	claim sarama.ConsumerGroupClaim,
+//) error {
+//	msgs := claim.Messages()
+//	// for range 遍历消息 channel
+//	// channel 关闭时（分区被释放），range 自动退出
+//	for msg := range msgs {
+//		// 实际业务中通常需要反序列化消息体：
+//		// var bizMsg MyBizMsg
+//		// err := json.Unmarshal(msg.Value, &bizMsg)
+//		// if err != nil {
+//		//     // 反序列化失败：消息格式异常，记日志后 skip（不重试，避免阻塞后续消息）
+//		//     continue
+//		// }
+//		println("msg.value:", string(msg.Value))
+//
+//		// MarkMessage：标记消息已成功消费
+//		// 注意：MarkMessage 不是立即提交到 Kafka！
+//		// 它只是在本地图录偏移量，真正提交发生在：
+//		//   - session 结束时（rebalance 触发）
+//		//   - Sarama 内部定时自动提交（cfg.Consumer.Offsets.AutoCommit.Interval）
+//		session.MarkMessage(msg, "")
+//	}
+//	// msgs channel 关闭，分区被释放，退出消费
+//	return nil
+//
+//}
 
 type MyBizMsg struct {
 	Name string

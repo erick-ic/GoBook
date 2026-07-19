@@ -45,3 +45,8 @@ func InitSyncProducer(c sarama.Client) sarama.SyncProducer {
 func InitConsumers(c1 *article.InteractiveReadEventConsumer) []article.Consumer {
 	return []article.Consumer{c1}
 }
+
+// InitBatchConsumers 批量消费
+func InitBatchConsumers(c1 *article.InteractiveReadEventBatchConsumer) []article.Consumer {
+	return []article.Consumer{c1}
+}

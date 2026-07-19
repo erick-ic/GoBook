@@ -25,13 +25,19 @@ func InitApp() *App {
 		//提供 *zap.Logger
 		ioc.InitLogger,
 
-		//初始化kafka
+		//初始化Kafka
 		ioc.InitSaramaClient,
 		ioc.InitSyncProducer,
-		ioc.InitConsumers,
+		//单次消费
+		//ioc.InitConsumers,
+		//批量消费
+		ioc.InitBatchConsumers,
 
 		article.NewKafkaProducer,
-		article.NewInteractiveReadEventConsumer,
+		//单次
+		//article.NewInteractiveReadEventConsumer,
+		//批量
+		article.NewInteractiveReadEventBatchConsumer,
 
 		//初始化DAO，缓存
 		dao.NewUserDAO,

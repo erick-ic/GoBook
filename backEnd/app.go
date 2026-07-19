@@ -7,6 +7,7 @@ import (
 )
 
 type App struct {
-	Server    *gin.Engine
+	Server *gin.Engine
+	//消费者类似web服务器，因此引入App结构体
 	Consumers []article.Consumer
 }

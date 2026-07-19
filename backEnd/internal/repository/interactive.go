@@ -9,6 +9,7 @@ import (
 
 type InteractiveRepository interface {
 	IncrReadCnt(ctx context.Context, biz string, bizId int64) error
+	BatchIncrReadCnt(ctx context.Context, biz []string, bizId []int64) error
 	IncrLike(ctx context.Context, biz string, id int64, uid int64) error
 	DecrLike(ctx context.Context, biz string, id int64, uid int64) error
 	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
@@ -52,6 +53,14 @@ func (ir *interactiveRepository) IncrReadCnt(ctx context.Context, biz string, bi
 	//缓存方案
 	//优先保证数据库的准确性，先走数据库
 	return ir.cache.IncrReadCntIfPresent(ctx, biz, bizId)
+}
+
+func (ir *interactiveRepository) BatchIncrReadCnt(ctx context.Context, biz []string, bizId []int64) error {
+	err := ir.dao.BatchIncrReadCnt(ctx, biz, bizId)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func NewInteractiveRepository(dao dao.InteractiveDAO, cache cache.InteractiveCache) InteractiveRepository {

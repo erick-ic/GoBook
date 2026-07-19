@@ -13,9 +13,26 @@ type InteractiveDAO interface {
 	InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) error
 	DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) error
 	Get(ctx context.Context, biz string, id int64) (Interactive, error)
+	BatchIncrReadCnt(ctx context.Context, bizs []string, ids []int64) error
 }
 type interactiveDAO struct {
 	db *gorm.DB
+}
+
+func (idao *interactiveDAO) BatchIncrReadCnt(ctx context.Context, bizs []string, ids []int64) error {
+	//同样都是10条消息，为什么批量消费比较单次消费快？
+	//1.批量消费开启一个事务，磁盘操作只执行一次
+	//2.刷新redolog、undolog、binlog到磁盘，批量消费远少于单次消费
+	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txDAO := NewInteractiveDAO(tx)
+		for i := range bizs {
+			err := txDAO.IncrReadCnt(ctx, bizs[i], ids[i])
+			if err != nil {
+				//记入日志
+			}
+		}
+		return nil
+	})
 }
 
 func (idao *interactiveDAO) Get(ctx context.Context, biz string, id int64) (Interactive, error) {
