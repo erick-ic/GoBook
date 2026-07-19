@@ -4,10 +4,9 @@ import (
 	"GoBook/internal/web"
 	ijwt "GoBook/internal/web/jwt"
 	"GoBook/internal/web/middleware"
-	"GoBook/internal/web/middleware/logger"
+	"GoBook/pkg/ginx/metric"
 	"GoBook/pkg/ginx/middleware/ratelimit"
 	logger2 "GoBook/pkg/logger"
-	"context"
 	"strings"
 	"time"
 
@@ -16,22 +15,47 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func InitGin(mdls []gin.HandlerFunc, hdl *web.UserHandler, oauth2 *web.OAuth2WechatHandler, article *web.ArticleHandler) *gin.Engine {
+func InitGin(
+	mdls []gin.HandlerFunc,
+	hdl *web.UserHandler,
+	oauth2 *web.OAuth2WechatHandler,
+	article *web.ArticleHandler,
+	metric *web.ObserverAbilityHandler,
+) *gin.Engine {
 	server := gin.Default()
 	server.Use(mdls...)
 	hdl.RegisterUsersRouters(server)
 	oauth2.RegisterWechatRouters(server)
 	article.RegisterRouters(server)
+
+	//测试metric
+	metric.RegisterRouters(server)
+
 	return server
 }
 
-func InitMiddleware(redisClient redis.Cmdable, jwtHandler ijwt.JWTHandler, l logger2.LoggerV1) []gin.HandlerFunc {
+func InitMiddleware(
+	redisClient redis.Cmdable,
+	jwtHandler ijwt.JWTHandler,
+	l logger2.LoggerV1,
+) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		//跨域中间件
 		handleCors(),
-		logger.NewMiddlewareBuilder(func(ctx context.Context, al *logger.AccessLog) {
-			l.Debug("HTTP请求", logger2.Field{Key: "al", Value: al})
-		}).SetAllowReqBody().Build(),
+
+		//logger.NewMiddlewareBuilder(func(ctx context.Context, al *logger.AccessLog) {
+		//	l.Debug("HTTP请求", logger2.Field{Key: "al", Value: al})
+		//}).SetAllowReqBody().Build(),
+
+		//测试metric响应时间中间件
+		metric.NewMiddlewareMetricBuilder(
+			"gobook_erick",
+			"gobook",
+			"gin_http",
+			"统计GIN的HTTP接口",
+			"my_instance_1",
+		).BuildResponseTime(),
+
 		//路由中间件
 		middleware.NewLoginJWTMiddlewareBuilder(jwtHandler).
 			IgnorePaths("/users/login").
@@ -41,6 +65,7 @@ func InitMiddleware(redisClient redis.Cmdable, jwtHandler ijwt.JWTHandler, l log
 			IgnorePaths("/oauth2/wechat/authurl").
 			IgnorePaths("/oauth2/wechat/callback").
 			IgnorePaths("/users/refreshToken").
+			IgnorePaths("/test/metrics").
 			Build(),
 		//限流中间件
 		ratelimit.NewBuilder(redisClient, time.Second, 100).Build(),

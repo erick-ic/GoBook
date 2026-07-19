@@ -71,6 +71,9 @@ func InitApp() *App {
 		web.NewOAuth2WechatHandler,
 		web.NewArticleHandler,
 
+		//测试metric
+		web.NewObserverAbilityHandler,
+
 		//初始化gin、路由、中间件
 		ioc.InitGin,
 		ioc.InitMiddleware,
