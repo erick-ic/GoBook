@@ -9,6 +9,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
+	"gorm.io/plugin/prometheus"
 )
 
 func InitDB(l logger.LoggerV1) *gorm.DB {
@@ -53,6 +54,21 @@ func InitDB(l logger.LoggerV1) *gorm.DB {
 	if err != nil {
 		//一旦初始化过程报错，应用就取消启动
 		//panic相当于整个goroutine结束
+		panic(err)
+	}
+
+	//GORM统计接口情况
+	err = db.Use(prometheus.New(prometheus.Config{
+		DBName:          "goBook",
+		RefreshInterval: 15,
+		StartServer:     false,
+		MetricsCollector: []prometheus.MetricsCollector{
+			&prometheus.MySQL{
+				VariableNames: []string{"thread_id"},
+			},
+		},
+	}))
+	if err != nil {
 		panic(err)
 	}
 
