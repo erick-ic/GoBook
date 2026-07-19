@@ -5,12 +5,14 @@ import (
 	"GoBook/internal/repository/dao"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -21,24 +23,15 @@ import (
 )
 
 func main() {
-	//db := initDB()
-	//redisClient := initRedis()
-	//defer redisClient.Close() // ✅ 确保程序退出时释放连接
-
-	//server := initWebServer(redisClient) // 传入 Redis（限流中间件可能需要）
-	//server := initWebServer()
-
-	//u := initUser(db, redisClient)
-
-	//u.RegisterUsersRouters(server)
-
 	InitViperV1()
-	//InitViperV2()
-	//InitViperV3()
-	//InitViperRemote()
-	//InitWatchViper()
 
-	//initLogger()
+	// 启动独立的 Prometheus 指标服务，监听 8081 端口
+	// 与业务端口 8080 隔离，避免：
+	//  1. 业务中间件（限流/JWT）干扰 metrics 采集
+	//  2. 业务流量过大时阻塞 /metrics 响应
+	//  3. metrics 暴露运行时敏感信息，独立端口便于网络层隔离
+	initPrometheus()
+
 	app := InitApp()
 	for _, c := range app.Consumers {
 		err := c.Start()
@@ -49,6 +42,21 @@ func main() {
 
 	server := app.Server
 	server.Run(":8080")
+}
+
+// initPrometheus 启动独立的 HTTP 服务暴露 Prometheus 指标
+// 监听 127.0.0.1:8081，仅本机可访问
+// 生产环境部署时，Prometheus 通过 K8s Service 内部访问该端口
+func initPrometheus() {
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		// 只绑定 localhost，外部网络访问不到，保证安全
+		err := http.ListenAndServe("127.0.0.1:8081", mux)
+		if err != nil {
+			panic(fmt.Errorf("Prometheus 指标服务启动失败: %w", err))
+		}
+	}()
 }
 
 func initWebServer() *gin.Engine {

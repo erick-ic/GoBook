@@ -1,0 +1,48 @@
+# Prometheus 采集配置文件
+# 该配置告诉 Prometheus Server 去哪里拉取指标、多久拉一次、超时时间是多少
+#
+# 结构说明：
+#   scrape_configs: 采集配置列表，每一项代表一个采集任务（job）
+#   - job_name:     任务名称，在 Prometheus 查询中作为 job 标签筛选指标
+#   scrape_interval: 采集间隔，每隔多久拉取一次目标的 /metrics
+#   scrape_timeout:  采集超时，单次拉取请求超过该时间则视为失败
+#   static_configs:  静态目标配置（也支持动态发现，如 k8s_sd_configs）
+#   - targets:       目标地址列表，格式为 host:port，Prometheus 会请求 http://host:port/metrics
+#
+# host.docker.internal: Docker 桌面版提供的特殊 DNS，
+#   在容器内解析后指向宿主机的 IP，
+#   用于容器内的 Prometheus 访问宿主机上运行的 Go 服务
+
+scrape_configs:
+  # job_name: 采集任务名称，作为 job 标签附加到所有采集到的指标上
+  # 在 Prometheus 查询时可以用 job="gobook" 筛选该服务的所有指标
+  - job_name: "gobook"
+
+    # scrape_interval: 采集间隔，每 5 秒拉取一次 /metrics
+    # 高并发应用不建议设置太频繁（如 1s），会给服务带来额外压力
+    # 也不建议设置太松（如 1m），指标颗粒度太粗不利于排查问题
+    # 5s 是开发/测试环境比较合理的折中值
+    scrape_interval: 5s
+
+    # scrape_timeout: 单次采集请求超时时间
+    # 必须小于 scrape_interval，否则下一轮采集开始时上一轮还没结束
+    # 这里 3s < 5s，符合要求
+    scrape_timeout: 3s
+
+    # static_configs: 静态目标配置，直接写死要采集的目标地址
+    # 相比服务发现（如 kubernetes_sd_configs），简单但不灵活
+    # 适合本地开发和小规模部署
+    static_configs:
+
+      # targets: 目标地址列表，格式为 host:port
+      # Prometheus 会自动在每个目标后拼接 /metrics 路径发起 GET 请求
+      # 也就是实际请求：http://host.docker.internal:8081/metrics
+      #
+      # host.docker.internal: Docker 桌面版（Mac/Windows）的特殊 DNS，
+      #   在容器内部解析后指向宿主机的 IP 地址。
+      #   因为 Go 服务跑在宿主机（macOS）上，Prometheus 跑在 Docker 容器里，
+      #   容器的 localhost ≠ 宿主机的 localhost，所以需要用这个特殊地址。
+      #
+      # 8081: 独立的 Prometheus 指标端口（与业务端口 8080 隔离）
+      #   由 Go 服务的 initPrometheus() 启动，仅暴露 /metrics
+      - targets: ["host.docker.internal:8081"]
