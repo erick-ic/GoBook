@@ -19,11 +19,19 @@ type ArticleDAO interface {
 	GetByAuthor(ctx context.Context, authorId int64, offset int, limit int) ([]Article, error)
 	GetById(ctx context.Context, id int64) (Article, error)
 	GetByPubId(ctx context.Context, id int64) (PublishArticle, error)
+	ListPublishedArticles(ctx context.Context, start time.Time, offset int, limit int) ([]Article, error)
 }
 
 // articleDAO 文章数据访问对象实现类
 type articleDAO struct {
 	db *gorm.DB // 数据库连接
+}
+
+func (ad *articleDAO) ListPublishedArticles(ctx context.Context, start time.Time, offset int, limit int) ([]Article, error) {
+	var articles []Article
+	err := ad.db.WithContext(ctx).Where("utime < ?", start.UnixMilli()).
+		Order("utime DESC").Offset(offset).Limit(limit).Find(&articles).Error
+	return articles, err
 }
 
 // NewArticleDAO 创建文章数据访问对象实例

@@ -15,14 +15,16 @@ import (
 )
 
 // ArticleHandler 文章处理器，处理文章相关的HTTP请求
+// 调用链路：HTTP请求 → ArticleHandler → ArticleService → ArticleRepository → ArticleDAO
 type ArticleHandler struct {
-	svc      service.ArticleService // 文章服务接口
-	interSvc service.InteractiveService
-	l        logger.LoggerV1 // 日志记录器
-	biz      string
+	svc      service.ArticleService     // 文章服务接口，处理文章核心业务
+	interSvc service.InteractiveService // 互动服务接口，处理点赞/收藏/阅读数
+	l        logger.LoggerV1            // 日志记录器
+	biz      string                     // 业务标识，用于互动服务区分业务类型（"article"）
 }
 
 // NewArticleHandler 创建文章处理器实例
+// biz 字段硬编码为 "article"，互动数据通过 biz+bizId 唯一标识
 func NewArticleHandler(
 	svc service.ArticleService,
 	l logger.LoggerV1,
@@ -37,22 +39,30 @@ func NewArticleHandler(
 }
 
 // RegisterRouters 注册文章相关的路由
+// 路由分为两组：
+//   - /articles/*：作者视角（需要登录，操作自己的文章）
+//   - /pub/*：读者视角（访问已发表文章，点赞等）
 func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 	group := server.Group("/articles")
-	group.POST("/edit", ah.Edit)         // 编辑/保存文章接口
-	group.POST("/publish", ah.Publish)   // 发表文章接口
-	group.POST("/withdraw", ah.Withdraw) // 撤回文章接口
+	group.POST("/edit", ah.Edit)         // 编辑/保存文章草稿
+	group.POST("/publish", ah.Publish)   // 发表文章（同步到制作库和线上库）
+	group.POST("/withdraw", ah.Withdraw) // 撤回文章（状态改为未发表）
 
+	// 使用 ginx.WrapBodyAndToken 泛型封装，自动解析请求体和JWT claims
 	group.POST("/list",
 		ginx.WrapBodyAndToken[ListReq, *ijwt.UserClaims](ah.ArticleList))
 
-	group.GET("/detail/:id", ah.Detail)
+	group.GET("/detail/:id", ah.Detail) // 查询文章详情（编辑用，从制作库取）
 
 	pubGroup := server.Group("/pub")
-	pubGroup.GET("/:id", ah.PubDetail)
-	pubGroup.POST("/like", ah.Like)
+	pubGroup.GET("/:id", ah.PubDetail)  // 读者访问已发表文章详情
+	pubGroup.POST("/like/:id", ah.Like) // 点赞/取消点赞文章
 
 }
+
+// Like 处理文章点赞请求
+// 调用 InteractiveService.Like 实现点赞/取消点赞的切换（幂等操作）
+// 调用链路：POST /pub/like/:id → Like → InteractiveService.Like → Repository（Redis+DB）
 func (ah *ArticleHandler) Like(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	articleId, err := strconv.ParseInt(idStr, 10, 64)
@@ -68,6 +78,7 @@ func (ah *ArticleHandler) Like(ctx *gin.Context) {
 		return
 	}
 
+	// 从 gin.Context 中获取 JWT claims（由 JWT 中间件设置）
 	c, ok := ctx.Get("claims")
 	claims := c.(*ijwt.UserClaims)
 	if !ok {
@@ -83,6 +94,7 @@ func (ah *ArticleHandler) Like(ctx *gin.Context) {
 		return
 	}
 
+	// 调用互动服务，Like 方法内部判断是否已点赞，实现点赞/取消的切换
 	err = ah.interSvc.Like(ctx, ah.biz, articleId, claims.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
@@ -97,6 +109,19 @@ func (ah *ArticleHandler) Like(ctx *gin.Context) {
 	})
 }
 
+// PubDetail 处理读者访问已发表文章详情的请求
+// 调用链路：GET /pub/:id → PubDetail → ArticleService.GetByPubId + InteractiveService.Get
+//
+// 执行流程：
+//  1. 解析文章ID和用户身份
+//  2. 调用 GetByPubId 获取文章内容（同时异步发送阅读事件到Kafka）
+//  3. 调用 InteractiveService.Get 获取互动数据（阅读数/点赞数/收藏数）
+//  4. 组装 ArticleVO 返回给前端
+//
+// 阅读计数说明：
+//   - 不在此处同步递增阅读数（已废弃直接调用 InccrReadCnt 的方式）
+//   - 改由 Service 层 GetByPubId 异步发送 Kafka 事件，消费者更新阅读数
+//   - 优点：响应快；缺点：本次返回的阅读数是旧值（最终一致）
 func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	articleId, err := strconv.ParseInt(idStr, 10, 64)
@@ -127,6 +152,7 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 		return
 	}
 
+	// 获取文章详情（从线上库），Service 层会异步发送阅读事件到 Kafka
 	res, err := ah.svc.GetByPubId(ctx, articleId, claims.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
@@ -140,6 +166,7 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 		return
 	}
 
+	// 获取互动数据（阅读数/点赞数/收藏数/是否点赞/是否收藏）
 	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId, claims.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
@@ -153,6 +180,7 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 		return
 	}
 
+	// 组装 VO 返回前端
 	vo := ArticleVO{
 		Id:         res.Id,
 		Title:      res.Title,
@@ -295,12 +323,22 @@ func (ah *ArticleHandler) Withdraw(ctx *gin.Context) {
 	})
 }
 
+// ArticleList 处理文章列表查询请求
+// 调用链路：POST /articles/list → ginx.WrapBodyAndToken → ArticleList → ArticleService.List
+//
+// 注意：此方法签名符合 ginx.WrapBodyAndToken 的要求：
+//   - 参数2：请求体（自动从 JSON 解析）
+//   - 参数3：JWT claims（自动从 gin.Context 提取）
+//   - 返回值1：Result（自动包装为 HTTP 响应）
+//   - 返回值2：error（非nil时由 ginx 处理错误）
 func (ah *ArticleHandler) ArticleList(ctx *gin.Context, req ListReq, uc *ijwt.UserClaims) (Result, error) {
 	res, err := ah.svc.List(ctx, uc.Uid, req.Offset, req.Limit)
 	if err != nil {
 		return Result{Code: 5, Msg: "系统错误！"}, nil
 	}
 
+	// 将领域模型列表转换为 VO 列表
+	// 列表接口不返回 content（数据量大），只返回摘要 Abstract
 	data := slice.Map[domain.Article, ArticleVO](
 		res,
 		func(idx int, src domain.Article) ArticleVO {
@@ -323,6 +361,9 @@ func (ah *ArticleHandler) ArticleList(ctx *gin.Context, req ListReq, uc *ijwt.Us
 	}, nil
 }
 
+// Detail 处理文章详情查询请求（作者视角）
+// 调用链路：GET /articles/detail/:id → Detail → ArticleService.GetById → Repository（制作库）
+// 用于作者编辑文章时获取完整内容（含未发表草稿）
 func (ah *ArticleHandler) Detail(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
