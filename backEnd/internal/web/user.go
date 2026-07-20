@@ -123,7 +123,7 @@ func (uh *UserHandler) SignUp(ctx *gin.Context) {
 		return
 	}
 
-	err = uh.svc.SignUp(ctx, domain.User{
+	err = uh.svc.SignUp(ctx.Request.Context(), domain.User{
 		Email:    req.Email,
 		Password: req.Password,
 	})

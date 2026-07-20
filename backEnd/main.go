@@ -3,6 +3,8 @@ package main
 import (
 	"GoBook/config"
 	"GoBook/internal/repository/dao"
+	"GoBook/ioc"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -31,6 +33,13 @@ func main() {
 	//  2. 业务流量过大时阻塞 /metrics 响应
 	//  3. metrics 暴露运行时敏感信息，独立端口便于网络层隔离
 	initPrometheus()
+
+	tpCancel := ioc.InitOpentelemetry()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		tpCancel(ctx)
+	}()
 
 	app := InitApp()
 	for _, c := range app.Consumers {

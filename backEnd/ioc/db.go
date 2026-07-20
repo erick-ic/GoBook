@@ -9,6 +9,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
+	"gorm.io/plugin/opentelemetry/tracing"
 	"gorm.io/plugin/prometheus"
 )
 
@@ -68,6 +69,18 @@ func InitDB(l logger.LoggerV1) *gorm.DB {
 			},
 		},
 	}))
+	if err != nil {
+		panic(err)
+	}
+
+	//接入opentelemetry
+	err = db.Use(tracing.NewPlugin(
+		tracing.WithDBSystem("gobook"),
+		tracing.WithQueryFormatter(func(query string) string {
+			l.Debug("", logger.String("query", query))
+			return query
+		}),
+	))
 	if err != nil {
 		panic(err)
 	}

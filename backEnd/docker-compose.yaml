@@ -49,15 +49,15 @@ services:
     command:
       - "--web.enable-remote-write-receiver"
       - "--config.file=/etc/prometheus/prometheus.yml"
-#  grafana:
-#    image: grafana/grafana-enterprise:10.2.0
-#    ports:
-#      - 3000:3000
-#  zipkin:
-#    #    用的是不支持 Kafka 之类的简化版本
-#    image: openzipkin/zipkin-slim:2.24
-#    ports:
-#      - '9411:9411'
+  grafana:
+    image: grafana/grafana-enterprise:10.2.0
+    ports:
+      - 3000:3000
+  zipkin:
+    #    用的是不支持 Kafka 之类的简化版本
+    image: openzipkin/zipkin-slim:2.24
+    ports:
+      - '9411:9411'
   kafka:
     image: 'bitnamilegacy/kafka:latest'
     ports:

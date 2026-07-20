@@ -13,6 +13,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	otelgin "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func InitGin(
@@ -55,6 +56,9 @@ func InitMiddleware(
 			"统计GIN的HTTP接口",
 			"my_instance_1",
 		).BuildResponseTime(),
+
+		//接入opentelemetry
+		otelgin.Middleware("gobook"),
 
 		//路由中间件
 		middleware.NewLoginJWTMiddlewareBuilder(jwtHandler).
