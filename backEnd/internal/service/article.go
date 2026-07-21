@@ -18,7 +18,7 @@ import (
 type ArticleService interface {
 	Save(ctx context.Context, article domain.Article) (int64, error)                                             // 保存文章草稿（强制未发表状态）
 	Publish(ctx context.Context, article domain.Article) (int64, error)                                          // 发表文章（同步到制作库和线上库）
-	Withdraw(ctx context.Context, article domain.Article) (int64, error)                                         // 撤回文章（同步更新两库状态）
+	Withdraw(ctx context.Context, articleId, Uid int64) (int64, error)                                           // 撤回文章（同步更新两库状态）
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)                        // 按作者分页查询文章列表
 	GetById(ctx context.Context, id int64) (domain.Article, error)                                               // 查询文章详情（制作库）
 	GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error)                                   // 查询已发表文章（线上库）+ 发送阅读事件
@@ -57,15 +57,16 @@ func (as *articleService) Save(ctx context.Context, article domain.Article) (int
 }
 
 // Publish 发表文章，强制状态为已发表，同步到制作库和线上库
+// 前端只需传文章 id（新建时 id=0），DAO 层会自行处理完整数据的获取
 func (as *articleService) Publish(ctx context.Context, article domain.Article) (int64, error) {
 	article.Status = domain.ArticleStatusPublished
 	return as.repo.Sync(ctx, article)
 }
 
 // Withdraw 撤回文章，将状态改为未发表，同步更新两库状态
-func (as *articleService) Withdraw(ctx context.Context, article domain.Article) (int64, error) {
-	article.Status = domain.ArticleStatusUnPublished
-	return as.repo.SyncStatus(ctx, article)
+func (as *articleService) Withdraw(ctx context.Context, articleId, Uid int64) (int64, error) {
+	status := domain.ArticleStatusUnPublished
+	return as.repo.SyncStatus(ctx, articleId, Uid, status)
 }
 
 func (as *articleService) List(ctx context.Context, authorId int64, offset int, limit int) ([]domain.Article, error) {
@@ -95,7 +96,6 @@ func (as *articleService) GetByPubId(ctx *gin.Context, articleId, Uid int64) (do
 		// 使用 goroutine 非阻塞发送，避免影响用户阅读体验
 		go func() {
 			er := as.producer.ProduceReadEvent(
-				ctx,
 				events.ReadEvent{
 					ArticleId: articleId,
 					Uid:       Uid,

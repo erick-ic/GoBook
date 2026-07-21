@@ -3,7 +3,7 @@ package web
 
 import "GoBook/internal/domain"
 
-// ArticleReq 文章编辑/发表请求结构体
+// ArticleReq 文章编辑/创建、发表请求结构体
 // 用于 /articles/edit、/articles/publish、/articles/withdraw 接口
 type ArticleReq struct {
 	Id      int64  `json:"id"`      // 文章ID，新增时为0，更新时为已有文章ID
@@ -16,6 +16,14 @@ type ArticleReq struct {
 type ListReq struct {
 	Offset int `json:"offset"` // 偏移量，从第几条开始
 	Limit  int `json:"limit"`  // 每页数量
+}
+
+type ArticleWithdrawReq struct {
+	Id int64 `json:"id"`
+}
+
+type ArticleLikeReq struct {
+	Id int64 `json:"id"`
 }
 
 // ArticleVO 文章视图对象，返回给前端的展示数据

@@ -22,7 +22,7 @@ type InteractiveService interface {
 	// CancelLike 取消点赞
 	CancelLike(ctx context.Context, biz string, articleId int64, uid int64) error
 	// Get 获取互动数据（阅读数/点赞数/收藏数）
-	Get(ctx context.Context, biz string, id int64, uid int64) (domain.Interactive, error)
+	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
 	// GetByIds 批量获取互动数据（用于排行榜计算）
 	GetByIds(ctx context.Context, biz string, ids []int64) (map[int64]domain.Interactive, error)
 }
@@ -42,7 +42,7 @@ func (is *interactiveService) GetByIds(ctx context.Context, biz string, ids []in
 // Get 获取互动数据
 // 调用链路：PubDetail Handler → Get → Repository.Get → DAO.Get
 // 注意：当前直接查数据库，未走缓存（后续可优化为先查缓存）
-func (is *interactiveService) Get(ctx context.Context, biz string, id int64, uid int64) (domain.Interactive, error) {
+func (is *interactiveService) Get(ctx context.Context, biz string, id int64) (domain.Interactive, error) {
 	inter, err := is.repo.Get(ctx, biz, id)
 	if err != nil {
 		return domain.Interactive{}, err

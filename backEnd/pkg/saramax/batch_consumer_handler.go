@@ -25,8 +25,8 @@ func NewBatchHandler[T any](
 	return &BatchHandler[T]{
 		l:             l,
 		fn:            fn,
-		batchSize:     10,
-		batchDuration: time.Second,
+		batchSize:     batchSize,
+		batchDuration: batchDuration,
 	}
 }
 
@@ -39,23 +39,25 @@ func (b *BatchHandler[T]) Cleanup(session sarama.ConsumerGroupSession) error {
 }
 
 // ConsumeClaim 批量消费
+// 每轮外层循环收集一批消息（最多 batchSize 条，或超时 batchDuration 后提前提交）
 func (b *BatchHandler[T]) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	msgsCh := claim.Messages()
 
-	// 批量大小：每次取 10 条消息并发处理
-	msgs := make([]*sarama.ConsumerMessage, 0, b.batchSize)
-
 	for {
+		// 每批重新初始化 msgs 和 ts，避免上一批残留数据导致：
+		//  1. msgs 和 ts 长度不一致
+		//  2. lastMsg 为 nil 但 len(msgs) > 0，导致 MarkMessage(nil) panic
+		msgs := make([]*sarama.ConsumerMessage, 0, b.batchSize)
+		ts := make([]T, 0, b.batchSize)
 		var lastMsg *sarama.ConsumerMessage
 
-		// 每批设置1秒超时，超时则提前提交已处理的消息
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		ts := make([]T, 0, b.batchSize)
+		// 每批设置超时，超时则提前提交已处理的消息
+		ctx, cancel := context.WithTimeout(context.Background(), b.batchDuration)
 		for i := 0; i < b.batchSize; i++ {
 			done := false
 			select {
 			case <-ctx.Done():
-				// 超时：1秒内没凑够一批，直接提交已处理的消息
+				// 超时：batchDuration 内没凑够一批，直接提交已处理的消息
 				done = true
 			case m1, ok := <-msgsCh:
 				if !ok {
@@ -99,10 +101,5 @@ func (b *BatchHandler[T]) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		// 批量提交：只标记最后一条消息，Kafka 会自动提交该分区到此偏移量之前的所有消息
 		// 这是 MarkMessage 的核心特性：偏移量是单调递增的，标记 N 就等于标记 [0, N]
 		session.MarkMessage(lastMsg, "")
-
-		//万无一失
-		//for _, m := range msgs {
-		//	session.MarkMessage(m, "")
-		//}
 	}
 }

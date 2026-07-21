@@ -44,73 +44,54 @@ func NewArticleHandler(
 //   - /pub/*：读者视角（访问已发表文章，点赞等）
 func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 	group := server.Group("/articles")
-	group.POST("/edit", ah.Edit)         // 编辑/保存文章草稿
-	group.POST("/publish", ah.Publish)   // 发表文章（同步到制作库和线上库）
-	group.POST("/withdraw", ah.Withdraw) // 撤回文章（状态改为未发表）
+	group.POST(
+		"/edit",
+		ginx.WrapBodyAndToken[ArticleReq, *ijwt.UserClaims](ah.Edit),
+	) // 编辑/保存文章草稿
+	group.POST(
+		"/publish",
+		ginx.WrapBodyAndToken[ArticleReq, *ijwt.UserClaims](ah.Publish),
+	) // 发表文章（同步到制作库和线上库）
+	group.POST(
+		"/withdraw",
+		ginx.WrapBodyAndToken[ArticleWithdrawReq, *ijwt.UserClaims](ah.Withdraw),
+	) // 撤回文章（状态改为未发表）
 
 	// 使用 ginx.WrapBodyAndToken 泛型封装，自动解析请求体和JWT claims
-	group.POST("/list",
-		ginx.WrapBodyAndToken[ListReq, *ijwt.UserClaims](ah.ArticleList))
-
+	group.POST(
+		"/list",
+		ginx.WrapBodyAndToken[ListReq, *ijwt.UserClaims](ah.ArticleList),
+	)
 	group.GET("/detail/:id", ah.Detail) // 查询文章详情（编辑用，从制作库取）
 
 	pubGroup := server.Group("/pub")
-	pubGroup.GET("/:id", ah.PubDetail)  // 读者访问已发表文章详情
-	pubGroup.POST("/like/:id", ah.Like) // 点赞/取消点赞文章
-
+	pubGroup.GET("/:id", ah.PublishArticleDetail) // 读者访问已发表文章详情
+	pubGroup.POST(
+		"/like",
+		ginx.WrapBodyAndToken[ArticleLikeReq, *ijwt.UserClaims](ah.Like),
+	) // 点赞/取消点赞文章
 }
 
 // Like 处理文章点赞请求
 // 调用 InteractiveService.Like 实现点赞/取消点赞的切换（幂等操作）
 // 调用链路：POST /pub/like/:id → Like → InteractiveService.Like → Repository（Redis+DB）
-func (ah *ArticleHandler) Like(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	articleId, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 4,
-			Msg:  "id 参数错误！",
-		})
-		ah.l.Warn("查询文章失败，id格式不对！",
-			logger.String("articleId", idStr),
-			logger.Error(err),
-		)
-		return
-	}
-
-	// 从 gin.Context 中获取 JWT claims（由 JWT 中间件设置）
-	c, ok := ctx.Get("claims")
-	claims := c.(*ijwt.UserClaims)
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		ah.l.Warn("查询文章失败，系统错误！",
-			logger.Int64("articleId", articleId),
-			logger.Int64("userId", claims.Uid),
-			logger.Error(err),
-		)
-		return
-	}
-
+func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.UserClaims) (Result, error) {
 	// 调用互动服务，Like 方法内部判断是否已点赞，实现点赞/取消的切换
-	err = ah.interSvc.Like(ctx, ah.biz, articleId, claims.Uid)
+	err := ah.interSvc.Like(ctx, ah.biz, req.Id, uc.Uid)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
+		return Result{
 			Code: 5,
 			Msg:  "系统错误！",
-		})
-		return
+		}, err
 	}
-	ctx.JSON(http.StatusOK, Result{
+	return Result{
 		Code: 0,
-		Msg:  "OK~",
-	})
+		Msg:  "点赞成功～",
+	}, nil
 }
 
-// PubDetail 处理读者访问已发表文章详情的请求
-// 调用链路：GET /pub/:id → PubDetail → ArticleService.GetByPubId + InteractiveService.Get
+// PublishArticleDetail 处理读者访问已发表文章详情的请求
+// 调用链路：GET /pub/:id → PublishArticleDetail → ArticleService.GetByPubId + InteractiveService.Get
 //
 // 执行流程：
 //  1. 解析文章ID和用户身份
@@ -122,7 +103,7 @@ func (ah *ArticleHandler) Like(ctx *gin.Context) {
 //   - 不在此处同步递增阅读数（已废弃直接调用 InccrReadCnt 的方式）
 //   - 改由 Service 层 GetByPubId 异步发送 Kafka 事件，消费者更新阅读数
 //   - 优点：响应快；缺点：本次返回的阅读数是旧值（最终一致）
-func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
+func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	articleId, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -138,7 +119,6 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 	}
 
 	c, ok := ctx.Get("claims")
-	claims := c.(*ijwt.UserClaims)
 	if !ok {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -146,6 +126,17 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 		})
 		ah.l.Warn("查询文章失败，系统错误！",
 			logger.Int64("articleId", articleId),
+			logger.Error(err),
+		)
+		return
+	}
+	claims, ok := c.(*ijwt.UserClaims)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		})
+		ah.l.Warn("查询文章失败，claims 类型错误！",
 			logger.Int64("userId", claims.Uid),
 			logger.Error(err),
 		)
@@ -167,7 +158,7 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 	}
 
 	// 获取互动数据（阅读数/点赞数/收藏数/是否点赞/是否收藏）
-	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId, claims.Uid)
+	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -214,113 +205,54 @@ func (ah *ArticleHandler) PubDetail(ctx *gin.Context) {
 }
 
 // Edit 处理文章编辑请求，保存草稿到制作库
-func (ah *ArticleHandler) Edit(ctx *gin.Context) {
-	var req ArticleReq
-	if err := ctx.Bind(&req); err != nil {
-		return
-	}
-
-	c, ok := ctx.Get("claims")
-	if !ok {
-		// claims 不存在
-		return
-	}
-
-	claims, ok := c.(*ijwt.UserClaims)
-	if !ok {
-		// 类型不匹配
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		ah.l.Error("未发现用户session信息")
-		return
-	}
-
-	id, err := ah.svc.Save(ctx, req.toDomain(claims.Uid))
+func (ah *ArticleHandler) Edit(ctx *gin.Context, req ArticleReq, uc *ijwt.UserClaims) (Result, error) {
+	id, err := ah.svc.Save(ctx, req.toDomain(uc.Uid))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
+		ah.l.Error("修改帖子失败", logger.Error(err))
+		return Result{
 			Code: 5,
 			Msg:  "系统错误！",
-		})
-		ah.l.Error("修改帖子失败", logger.Error(err))
-		return
+		}, nil
 	}
-	ctx.JSON(http.StatusOK, Result{
+	return Result{
 		Code: 0,
 		Msg:  "编辑成功～",
 		Data: id,
-	})
+	}, nil
 }
 
 // Publish 处理文章发表请求，将文章同步到制作库和线上库
-func (ah *ArticleHandler) Publish(ctx *gin.Context) {
-	var req ArticleReq
-	if err := ctx.Bind(&req); err != nil {
-		return
-	}
-
-	c, ok := ctx.Get("claims")
-	claims := c.(*ijwt.UserClaims)
-
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		ah.l.Error("未发现用户session信息")
-		return
-	}
-
-	id, err := ah.svc.Publish(ctx, req.toDomain(claims.Uid))
+func (ah *ArticleHandler) Publish(ctx *gin.Context, req ArticleReq, uc *ijwt.UserClaims) (Result, error) {
+	id, err := ah.svc.Publish(ctx, req.toDomain(uc.Uid))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
+		ah.l.Error("发表帖子失败", logger.Error(err))
+		return Result{
 			Code: 5,
 			Msg:  "系统错误！",
-		})
-		ah.l.Error("发表帖子失败", logger.Error(err))
-		return
+		}, nil
 	}
-	ctx.JSON(http.StatusOK, Result{
+	return Result{
 		Code: 0,
-		Msg:  "OK～",
+		Msg:  "发表成功～",
 		Data: id,
-	})
+	}, nil
 }
 
 // Withdraw 处理文章撤回请求，将已发表的文章状态改为未发表
-func (ah *ArticleHandler) Withdraw(ctx *gin.Context) {
-	var req ArticleReq
-	if err := ctx.Bind(&req); err != nil {
-		return
-	}
-
-	c, ok := ctx.Get("claims")
-	claims := c.(*ijwt.UserClaims)
-
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, Result{
-			Code: 5,
-			Msg:  "系统错误！",
-		})
-		ah.l.Error("未发现用户session信息")
-		return
-	}
-
-	id, err := ah.svc.Withdraw(ctx, req.toDomain(claims.Uid))
+func (ah *ArticleHandler) Withdraw(ctx *gin.Context, req ArticleWithdrawReq, uc *ijwt.UserClaims) (Result, error) {
+	id, err := ah.svc.Withdraw(ctx, req.Id, uc.Uid)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, Result{
+		ah.l.Error("撤回帖子失败", logger.Error(err))
+		return Result{
 			Code: 5,
 			Msg:  "系统错误！",
-		})
-		ah.l.Error("撤回帖子失败", logger.Error(err))
-		return
+		}, err
 	}
-	ctx.JSON(http.StatusOK, Result{
+	return Result{
 		Code: 0,
-		Msg:  "OK～",
+		Msg:  "文章撤回成功～",
 		Data: id,
-	})
+	}, nil
 }
 
 // ArticleList 处理文章列表查询请求

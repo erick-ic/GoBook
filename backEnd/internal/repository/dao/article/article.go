@@ -1,6 +1,7 @@
 package article
 
 import (
+	"GoBook/internal/domain"
 	"context"
 	"fmt"
 	"time"
@@ -11,11 +12,11 @@ import (
 
 // ArticleDAO 文章数据访问对象接口，定义文章的数据库操作
 type ArticleDAO interface {
-	Insert(ctx context.Context, article Article) (int64, error)     // 插入文章记录
-	UpdateById(ctx context.Context, article Article) error          // 根据ID更新文章
-	Sync(ctx context.Context, article Article) (int64, error)       // 事务内同步文章到制作库和线上库
-	Upsert(ctx context.Context, article PublishArticle) error       // 线上库插入或更新（UPSERT）
-	SyncStatus(ctx context.Context, article Article) (int64, error) // 事务内同步更新两库的文章状态
+	Insert(ctx context.Context, article Article) (int64, error)                                       // 插入文章记录
+	UpdateById(ctx context.Context, article Article) error                                            // 根据ID更新文章
+	Sync(ctx context.Context, article Article) (int64, error)                                         // 事务内同步文章到制作库和线上库
+	Upsert(ctx context.Context, article PublishArticle) error                                         // 线上库插入或更新（UPSERT）
+	SyncStatus(ctx context.Context, articleId, Uid int64, status domain.ArticleStatus) (int64, error) // 事务内同步更新两库的文章状态
 	GetByAuthor(ctx context.Context, authorId int64, offset int, limit int) ([]Article, error)
 	GetById(ctx context.Context, id int64) (Article, error)
 	GetByPubId(ctx context.Context, id int64) (PublishArticle, error)
@@ -52,17 +53,22 @@ func (ad *articleDAO) Insert(ctx context.Context, article Article) (int64, error
 
 // UpdateById 根据ID更新文章，带上作者ID防止修改他人文章
 // 更新字段包括标题、内容、状态和更新时间，若未命中记录则返回错误
+//
+// 注意：不能使用 db.Model(&article).Updates(map)，
+// 因为 Model(&article) 会把 article 的零值字段（如空 title）作为 WHERE 条件，
+// 导致匹配不到记录或清空已有数据。
+// 正确做法：用 db.Model(&Article{}).Where(...).Updates(map) 显式指定条件和更新值。
 func (ad *articleDAO) UpdateById(ctx context.Context, article Article) error {
 	now := time.Now().UnixMilli()
-	article.Utime = now
 
-	res := ad.db.WithContext(ctx).Model(&article).
+	// 用空模型 + 显式 WHERE 条件，避免 GORM 把零值字段作为查询条件
+	res := ad.db.WithContext(ctx).Model(&Article{}).
 		Where("id = ? AND author_id = ?", article.Id, article.AuthorId).
 		Updates(map[string]any{
 			"title":   article.Title,
 			"content": article.Content,
 			"status":  article.Status,
-			"utime":   article.Utime,
+			"utime":   now,
 		})
 
 	if res.Error != nil {
@@ -76,7 +82,10 @@ func (ad *articleDAO) UpdateById(ctx context.Context, article Article) error {
 
 // Sync 事务内同步文章到制作库和线上库，保证两库数据一致性
 // 采用GORM闭包事务，自动管理Begin/Rollback/Commit生命周期
-// 先写入制作库（INSERT或UPDATE），再写入线上库（UPSERT）
+//
+// 要求客户端传递完整数据（id、title、content、author_id）：
+//   - id = 0：新建文章，INSERT 到制作库 + UPSERT 到线上库
+//   - id > 0：已存在文章，UPDATE 制作库 + UPSERT 到线上库
 func (ad *articleDAO) Sync(ctx context.Context, article Article) (int64, error) {
 	var (
 		id  = article.Id
@@ -88,30 +97,12 @@ func (ad *articleDAO) Sync(ctx context.Context, article Article) (int64, error) 
 			err = txDAO.UpdateById(ctx, article)
 		} else {
 			id, err = txDAO.Insert(ctx, article)
+			article.Id = id
 		}
 		if err != nil {
 			return err
 		}
 		return txDAO.Upsert(ctx, PublishArticle(article))
-		//article.Id = id
-		//now := time.Now().UnixMilli()
-		//pubArticle := PublishArticle(article)
-		//pubArticle.Ctime = now
-		//pubArticle.Utime = now
-		//err = tx.Clauses(clause.OnConflict{
-		//	// 对MySQL不起效，但是可以兼容别的方言
-		//	// INSERT xxx ON DUPLICATE KEY SET `title`=?
-		//	// 别的方言：
-		//	// sqlite INSERT XXX ON CONFLICT DO UPDATES WHERE
-		//	Columns: []clause.Column{{Name: "id"}},
-		//	DoUpdates: clause.Assignments(map[string]interface{}{
-		//		"title":   pubArticle.Title,
-		//		"content": pubArticle.Content,
-		//		"utime":   now,
-		//		"status":  pubArticle.Status,
-		//	}),
-		//}).Create(&pubArticle).Error
-		//return err
 	})
 	return id, err
 }
@@ -136,28 +127,30 @@ func (ad *articleDAO) Upsert(ctx context.Context, article PublishArticle) error 
 
 // SyncStatus 事务内同步更新两库的文章状态，保证状态一致性
 // 先更新制作库（带作者ID校验），再更新线上库
-func (ad *articleDAO) SyncStatus(ctx context.Context, article Article) (int64, error) {
+func (ad *articleDAO) SyncStatus(ctx context.Context, articleId, Uid int64, status domain.ArticleStatus) (int64, error) {
 	var (
-		id = article.Id
+		id = articleId
 	)
 	now := time.Now().UnixMilli()
 	return id, ad.db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&article).
-			Where("id = ? AND author_id = ?", id, article.AuthorId).
+		// 制作库：带作者ID校验，防止修改他人文章
+		res := tx.Model(&Article{}).
+			Where("id = ? AND author_id = ?", id, Uid).
 			Updates(map[string]any{
-				"status": article.Status,
+				"status": status,
 				"utime":  now,
 			})
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
-			return fmt.Errorf("更新失败，可能是作者非法，id %d，author_id %d", article.Id, article.AuthorId)
+			return fmt.Errorf("更新失败，可能是作者非法，id %d，author_id %d", articleId, Uid)
 		}
-		return tx.Model(&article).
+		// 线上库：只按 id 更新（读者视角，无需校验作者）
+		return tx.Model(&PublishArticle{}).
 			Where("id = ? ", id).
 			Updates(map[string]any{
-				"status": article.Status,
+				"status": status,
 				"utime":  now,
 			}).Error
 	})
@@ -176,13 +169,13 @@ func (ad *articleDAO) GetByAuthor(ctx context.Context, authorId int64, offset in
 
 func (ad *articleDAO) GetById(ctx context.Context, id int64) (Article, error) {
 	var article Article
-	err := ad.db.WithContext(ctx).Where("id=?", id).Find(&article).Error
+	err := ad.db.WithContext(ctx).Where("id = ?", id).First(&article).Error
 	return article, err
 }
 
 func (ad *articleDAO) GetByPubId(ctx context.Context, id int64) (PublishArticle, error) {
 	var pubArt PublishArticle
-	err := ad.db.WithContext(ctx).Where("id = ?", id).Find(&pubArt).Error
+	err := ad.db.WithContext(ctx).Where("id = ?", id).First(&pubArt).Error
 	return pubArt, err
 }
 

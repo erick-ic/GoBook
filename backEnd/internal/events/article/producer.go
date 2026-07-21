@@ -1,7 +1,6 @@
 package article
 
 import (
-	"context"
 	"encoding/json"
 
 	"github.com/IBM/sarama"
@@ -13,7 +12,7 @@ const TopicReadEvent = "article_read"
 // Producer 消息生产者接口，定义业务层使用的发消息方法
 // 业务层只依赖接口，不直接依赖 sarama，方便测试 mock
 type Producer interface {
-	ProduceReadEvent(ctx context.Context, evt ReadEvent) error
+	ProduceReadEvent(evt ReadEvent) error
 }
 
 // KafkaProducer 基于 sarama.SyncProducer 的 Kafka 生产者实现
@@ -31,7 +30,7 @@ func NewKafkaProducer(producer sarama.SyncProducer) Producer {
 
 // ProduceReadEvent 发送一条文章阅读事件到 Kafka
 // 流程：结构体 → JSON 序列化 → 发送到 topic "article_read"
-func (k *KafkaProducer) ProduceReadEvent(ctx context.Context, evt ReadEvent) error {
+func (k *KafkaProducer) ProduceReadEvent(evt ReadEvent) error {
 	data, err := json.Marshal(evt)
 	if err != nil {
 		return err

@@ -23,7 +23,7 @@ type ArticleRepository interface {
 	Create(ctx context.Context, article domain.Article) (int64, error)                                           // 创建文章（写制作库）
 	Update(ctx context.Context, article domain.Article) error                                                    // 更新文章（写制作库）
 	Sync(ctx context.Context, article domain.Article) (int64, error)                                             // 同步文章到制作库和线上库（事务）
-	SyncStatus(ctx context.Context, article domain.Article) (int64, error)                                       // 同步更新两库的文章状态（事务）
+	SyncStatus(ctx context.Context, articleId, Uid int64, status domain.ArticleStatus) (int64, error)            // 同步更新两库的文章状态（事务）
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)                        // 按作者分页查询（含缓存）
 	GetById(ctx context.Context, id int64) (domain.Article, error)                                               // 查询文章（制作库）
 	GetByPubId(ctx context.Context, id int64) (domain.Article, error)                                            // 查询已发表文章（线上库）
@@ -110,12 +110,12 @@ func (ar *articleRepository) Sync(ctx context.Context, article domain.Article) (
 }
 
 // SyncStatus 同步更新两库的文章状态，事务内完成（委托给DAO层处理）
-func (ar *articleRepository) SyncStatus(ctx context.Context, article domain.Article) (int64, error) {
+func (ar *articleRepository) SyncStatus(ctx context.Context, articleId, Uid int64, status domain.ArticleStatus) (int64, error) {
 	defer func() {
 		//清空缓存
-		ar.articleCache.DelFirstPage(ctx, article.Author.Id)
+		ar.articleCache.DelFirstPage(ctx, Uid)
 	}()
-	return ar.dao.SyncStatus(ctx, ar.toEntity(article))
+	return ar.dao.SyncStatus(ctx, articleId, Uid, status)
 }
 
 // SyncV1 预留：V1版本同步方案，手动操作两个DAO（无事务）

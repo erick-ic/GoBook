@@ -66,13 +66,21 @@ func (idao *interactiveDAO) DeleteLikeInfo(ctx context.Context, biz string, id i
 //  2. 更新 Interactive 表的 like_cnt（原子递增）
 //     - 使用 OnConflict + gorm.Expr 实现：存在则 like_cnt+1，不存在则插入 like_cnt=1
 //
-// 注意：当前实现即使重复点赞也会让 like_cnt+1（OnConflict 都会执行 DoUpdates）
-// 生产环境应配合 UserLikeBiz 的 status 字段判断是否为重复点赞
+// 防重复点赞原理：
+//   - 通过 RowsAffected 判断是 INSERT 还是 UPDATE
+//   - RowsAffected=1：新插入记录（首次点赞），like_cnt +1
+//   - RowsAffected=0：触发 ON CONFLICT UPDATE（已点赞过），不增加 like_cnt
+//   - 配合 UserLikeBiz.status 字段，支持"取消点赞后再点赞"的场景
 func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) error {
 	now := time.Now().UnixMilli()
 	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 步骤1：写入用户点赞记录（幂等，通过唯一索引 uid_biz_type_id 防重）
-		err := tx.Clauses(clause.OnConflict{
+		// ON DUPLICATE KEY UPDATE 时，RowsAffected 的取值：
+		//   - 1：新插入记录（INSERT）
+		//   - 2：更新了记录（UPDATE，MySQL 把 INSERT 算作 0 行，UPDATE 算作 2 行）
+		//   - 0：触发 ON CONFLICT 但字段值没变化（MySQL 特殊行为）
+		// 这里用 ==1 判断是否为真正的新插入
+		res := tx.Clauses(clause.OnConflict{
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"utime":  now,
 				"status": 1, // 1=有效，0=已取消
@@ -84,10 +92,17 @@ func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id i
 			Status: 1,
 			Ctime:  now,
 			Utime:  now,
-		}).Error
-		if err != nil {
-			return err
+		})
+		if res.Error != nil {
+			return res.Error
 		}
+
+		// 只有新插入（首次点赞）才更新互动表的点赞数
+		// 重复点赞（RowsAffected != 1）不增加 like_cnt，避免点赞数虚增
+		if res.RowsAffected != 1 {
+			return nil
+		}
+
 		// 步骤2：更新互动表的点赞数（原子递增）
 		// gorm.Expr("`like_cnt` + 1") 等价于 SQL: like_cnt = like_cnt + 1
 		return tx.Clauses(clause.OnConflict{
@@ -108,7 +123,6 @@ func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id i
 // IncrReadCnt 增加阅读数
 // 使用 Upsert 模式：存在则原子递增 read_cnt，不存在则插入 read_cnt=1
 // gorm.Expr("`read_cnt` + 1") 等价于 SQL: read_cnt = read_cnt + 1
-//
 // 此方法会被 Kafka 消费者调用（异步更新阅读数）
 func (idao *interactiveDAO) IncrReadCnt(ctx context.Context, biz string, bizId int64) error {
 	now := time.Now().UnixMilli()
