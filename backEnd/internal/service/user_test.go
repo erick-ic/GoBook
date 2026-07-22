@@ -18,6 +18,9 @@ import (
 
 // mockgen -source=internal/repository/user.go -package=repomocks -destination=internal/repository/mocks/user.mock.go
 // mockgen -source=internal/repository/code.go -package=repomocks -destination=internal/repository/mocks/code.mock.go
+
+//go:generate mockgen -source=../repository/user.go -package=repomocks -destination=internal/repository/mocks/user.mock.go
+//go:generate mockgen -source=../repository/code.go -package=repomocks -destination=internal/repository/mocks/code.mock.go
 func Test_userService_Login(t *testing.T) {
 	now := time.Now()
 	testCases := []struct {

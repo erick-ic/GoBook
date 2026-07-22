@@ -20,7 +20,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// mockgen -source=internal/service/article.go -package=svcmocks -destination=internal/service/mocks/article.mock.go
 func TestArticleHandler_Publish(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -63,7 +62,7 @@ func TestArticleHandler_Publish(t *testing.T) {
 			//Result中的Data字段类型是any，在json中会被转换为float64
 			expectBody: Result{
 				Code: 0,
-				Msg:  "OK～",
+				Msg:  "发表成功～",
 				Data: float64(1),
 			},
 		},
@@ -83,10 +82,10 @@ func TestArticleHandler_Publish(t *testing.T) {
 					Author: domain.Author{
 						Id: 21,
 					},
-				}).Return(int64(0), errors.New("发表失败!"))
+				}).Return(int64(0), errors.New("发表帖子失败"))
 				return articleSvc
 			},
-			expectCode: http.StatusInternalServerError,
+			expectCode: http.StatusOK,
 			/*
 				type Result struct {
 					Code int    `json:"code"`
@@ -114,7 +113,7 @@ func TestArticleHandler_Publish(t *testing.T) {
 				})
 			})
 
-			h := NewArticleHandler(tc.mock(ctrl), &logger.NopLogger{})
+			h := NewArticleHandler(tc.mock(ctrl), &logger.NopLogger{}, nil)
 			h.RegisterRouters(server)
 
 			req, err := http.NewRequest(http.MethodPost, "/articles/publish", bytes.NewBuffer([]byte(tc.reqBody)))

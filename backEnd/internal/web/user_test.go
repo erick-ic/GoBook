@@ -4,6 +4,7 @@ import (
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
 	svcmocks "GoBook/internal/service/mocks"
+	"GoBook/pkg/logger"
 	"bytes"
 	"context"
 	"errors"
@@ -17,8 +18,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// 核心指令：
-// mockgen -source=internal/service/user.go -package=svcmocks -destination=internal/service/mocks/user.mock.go
 func TestMock(t *testing.T) {
 	//1.初始化控制器，创建一个控制器，负责管理所有 Mock 对象的生命周期和期望校验。
 	//传入 *testing.T 是为了在断言失败时自动报告错误。
@@ -47,8 +46,6 @@ func TestMock(t *testing.T) {
 	//mock error
 }
 
-// mockgen -source=internal/service/user.go -package=svcmocks -destination=internal/service/mocks/user.mock.go
-
 // 结构体切片
 //
 //	[]struct{}{
@@ -57,6 +54,14 @@ func TestMock(t *testing.T) {
 //			"func":""
 //		}
 //	}
+
+// mockgen -source=internal/service/user.go -package=svcmocks -destination=internal/service/mocks/user.mock.go
+
+// 为 UserService 接口生成 Mock 实现，供 Web 层单元测试隔离真实 Service 使用。
+// -source 指定接口源码；-package 指定生成代码的包名；-destination 指定生成文件的位置。
+// 注意：go generate 会以当前包目录（internal/web）为工作目录解析这些相对路径。
+
+//go:generate mockgen -source=../service/user.go -package=svcmocks -destination=../service/mocks/user.mock.go
 func TestUserHandler_SignUp(t *testing.T) {
 	testCases := []struct {
 		//用例名称
@@ -216,7 +221,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 
 			//构造真实 Handler：
 			server := gin.Default()
-			h := NewUserHandler(tc.mock(ctrl), nil, nil, nil)
+			h := NewUserHandler(tc.mock(ctrl), nil, nil, nil, &logger.NopLogger{})
 			//注册路由
 			h.RegisterUsersRouters(server)
 

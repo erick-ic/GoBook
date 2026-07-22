@@ -14,7 +14,6 @@ import (
 // ArticleService 文章服务接口，定义文章的核心业务操作
 // 调用链路：HTTP Handler → ArticleService → ArticleRepository → ArticleDAO
 
-//go:generate mockgen -source=./article.go -package=svcmocks -destination=./mocks/article.mock.go ArticleService
 type ArticleService interface {
 	Save(ctx context.Context, article domain.Article) (int64, error)                                             // 保存文章草稿（强制未发表状态）
 	Publish(ctx context.Context, article domain.Article) (int64, error)                                          // 发表文章（同步到制作库和线上库）
