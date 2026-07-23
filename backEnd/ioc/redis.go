@@ -4,6 +4,7 @@ import (
 	"GoBook/config"
 	"fmt"
 
+	rlock "github.com/gotomicro/redis-lock"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 )
@@ -18,4 +19,8 @@ func InitRedis() redis.Cmdable {
 		Addr: config.Config.Redis.Addr,
 	})
 	return redisClient
+}
+
+func InitRlockClient(cmd redis.Cmdable) *rlock.Client {
+	return rlock.NewClient(cmd)
 }

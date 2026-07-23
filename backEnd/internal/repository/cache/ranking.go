@@ -14,6 +14,12 @@ type RankingCache interface {
 	Get(ctx context.Context) ([]domain.Article, error)
 }
 
+type RankingRedisCache struct {
+	client     redis.Cmdable
+	key        string
+	expiration time.Duration
+}
+
 // NewRankingRedisCache 使用固定 key 保存当前榜单；过期时间应长于刷新周期，
 // 使偶发的一次计算失败不会立即造成榜单不可用。
 func NewRankingRedisCache(client redis.Cmdable) RankingCache {
@@ -45,10 +51,4 @@ func (r *RankingRedisCache) Get(ctx context.Context) ([]domain.Article, error) {
 	var res []domain.Article
 	err = json.Unmarshal(val, &res)
 	return res, err
-}
-
-type RankingRedisCache struct {
-	client     redis.Cmdable
-	key        string
-	expiration time.Duration
 }

@@ -19,15 +19,19 @@ import (
 
 // RankingServiceSet 串起“批量计算 -> 仓储 -> Redis 缓存”的排行榜依赖。
 var RankingServiceSet = wire.NewSet(
-	repository.NewCachedRankingRepository,
 	cache.NewRankingRedisCache,
+	cache.NewRankingLocalCache,
+	repository.NewCachedRankingRepository,
 	service.NewBatchRankingService,
 )
 
 func InitApp() *App {
 	wire.Build(
 		//基础的三方依赖
-		ioc.InitDB, ioc.InitRedis,
+		ioc.InitDB,
+		ioc.InitRedis,
+
+		ioc.InitRlockClient,
 
 		//提供 *zap.Logger
 		ioc.InitLogger,
@@ -43,6 +47,7 @@ func InitApp() *App {
 		RankingServiceSet,
 		ioc.InitRankingJob,
 		ioc.InitJobs,
+		ioc.InitClosers,
 
 		article.NewKafkaProducer,
 		//单次

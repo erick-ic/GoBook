@@ -15,13 +15,14 @@ type RankingRepository interface {
 // 读取采用“本地优先、Redis 回源并回填本地”的 cache-aside 策略；
 // 写入则整体替换两级缓存中的榜单快照。
 type CachedRankingRepository struct {
-	// 这里依赖具体实现，调用关系直观，但单元测试无法直接替换为 mock。
-	redisCache *cache.RankingRedisCache
-	localCache *cache.RankingLocalCache
+	// Redis 层依赖 RankingCache 接口，既能匹配 Wire provider，也便于测试时替换为 mock。
+	redisCache cache.RankingCache
+	// 本地层使用独立接口，避免与 Redis provider 冲突，也便于单独 mock。
+	localCache cache.LocalRankingCache
 }
 
 // NewCachedRankingRepository 组装排行榜使用的两级缓存。
-func NewCachedRankingRepository(redis *cache.RankingRedisCache, local *cache.RankingLocalCache) RankingRepository {
+func NewCachedRankingRepository(redis cache.RankingCache, local cache.LocalRankingCache) RankingRepository {
 	return &CachedRankingRepository{redisCache: redis, localCache: local}
 }
 

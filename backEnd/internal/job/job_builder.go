@@ -18,9 +18,16 @@ type CronJobBuilder struct {
 func NewCronJobBuilder(l logger.LoggerV1) *CronJobBuilder {
 	vector := prometheus.NewSummaryVec(prometheus.SummaryOpts{
 		Namespace: "GoBook",
+		Name:      "job",
 		Subsystem: "GoBook_cron",
 		Help:      "统计定时任务的执行情况",
-		Name:      "job",
+		Objectives: map[float64]float64{
+			0.5:   0.01,
+			0.75:  0.01,
+			0.9:   0.01,
+			0.99:  0.001,
+			0.999: 0.0001,
+		},
 	}, []string{"job", "success"})
 	prometheus.MustRegister(vector)
 	return &CronJobBuilder{
