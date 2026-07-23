@@ -17,6 +17,13 @@ import (
 	"github.com/google/wire"
 )
 
+// RankingServiceSet 串起“批量计算 -> 仓储 -> Redis 缓存”的排行榜依赖。
+var RankingServiceSet = wire.NewSet(
+	repository.NewCachedRankingRepository,
+	cache.NewRankingRedisCache,
+	service.NewBatchRankingService,
+)
+
 func InitApp() *App {
 	wire.Build(
 		//基础的三方依赖
@@ -32,6 +39,10 @@ func InitApp() *App {
 		//ioc.InitConsumers,
 		//批量消费
 		ioc.InitBatchConsumers,
+
+		RankingServiceSet,
+		ioc.InitRankingJob,
+		ioc.InitJobs,
 
 		article.NewKafkaProducer,
 		//单次

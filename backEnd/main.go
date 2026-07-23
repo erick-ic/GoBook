@@ -49,6 +49,18 @@ func main() {
 		}
 	}
 
+	// 所有消费者启动后再开启调度，避免排行榜任务与依赖初始化并发。
+	app.Cron.Start()
+	defer func() {
+		// Stop 会禁止新任务进入，并返回一个在运行中任务全部结束后关闭的 Context。
+		ctx := app.Cron.Stop()
+		tm := time.NewTimer(time.Minute * 10)
+		select {
+		case <-tm.C:
+		case <-ctx.Done():
+		}
+	}()
+
 	server := app.Server
 	server.Run(":8080")
 }
