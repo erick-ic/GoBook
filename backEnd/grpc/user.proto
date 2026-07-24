@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+// go_package 指定生成代码的 Go 导入路径和包位置。
+option go_package = "GoBook/grpc";
+
+// User 描述用户服务在网络上传输的用户信息。
+message User{
+  // 字段编号属于序列化协议的一部分，发布后不能随意修改。
+  int64 id = 1;
+  string name = 2;
+
+  // 字段编号可以不连续；即使删除字段，也不要复用其编号，以免旧数据被错误解析。
+  string avatar = 4;
+
+  // attributes 保存键值形式的扩展属性。
+  map<string, string> attributes = 5;
+
+  // repeated 表示该字段可以包含零个或多个昵称。
+  repeated string nicknames = 6;
+
+  // optional 可以区分“未设置年龄”和“年龄值为 0”。
+  optional int32 age = 7;
+
+  // 消息类型可以作为另一个消息的字段，实现结构嵌套。
+  Address address = 8;
+
+  // oneof 保证 email 和 phone 在同一时刻至多设置一个。
+  oneof contacts{
+    string email = 9;
+    string phone = 10;
+  }
+}
+
+// Address 描述用户地址。
+message Address{
+  string province = 1;
+  string city = 2;
+}
+
+// Gender 表示用户性别。
+enum Gender{
+  // proto3 会把编号 0 作为枚举默认值，因此用 Unknown 表示未指定。
+  Unknown = 0;
+  Female = 1;
+  Male = 2;
+}
+
+// UserService 提供用户查询相关的 RPC。
+service UserService{
+  rpc GetById (GetByIdRequest) returns (GetByIdResponse);
+}
+
+// GetByIdRequest 是按用户 ID 查询的请求。
+message GetByIdRequest {
+  int64 Id = 1;
+}
+
+// GetByIdResponse 包含查询到的用户信息。
+message GetByIdResponse {
+  User user = 1;
+}
