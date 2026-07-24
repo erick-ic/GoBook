@@ -20,10 +20,19 @@ type InteractiveDAO interface {
 	Get(ctx context.Context, biz string, id int64) (Interactive, error)
 	// BatchIncrReadCnt 批量增加阅读数（事务内循环执行）
 	BatchIncrReadCnt(ctx context.Context, bizs []string, ids []int64) error
+	GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error)
 }
 
 type interactiveDAO struct {
 	db *gorm.DB
+}
+
+func (idao *interactiveDAO) GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error) {
+	var inters []Interactive
+	err := idao.db.WithContext(ctx).
+		Where("biz = ? AND biz_id IN ?", biz, ids).
+		Find(&inters).Error
+	return inters, err
 }
 
 // BatchIncrReadCnt 批量增加阅读数

@@ -181,6 +181,16 @@ func (ar *articleRepository) List(ctx context.Context, authorId int64, offset in
 	// 	}
 	// }
 
+	//请求文章列表
+	//├─ offset != 0 → 直接查询 MySQL
+	//└─ offset == 0
+	//├─ 查询 Redis
+	//│    └─ 命中 → 返回缓存
+	//└─ 未命中或 Redis 异常
+	//├─ 查询 MySQL
+	//├─ 回写 Redis，TTL 约5分钟
+	//└─ 返回结果
+
 	// 查询数据库（制作库）
 	res, err := ar.dao.GetByAuthor(ctx, authorId, offset, limit)
 	if err != nil {
@@ -193,13 +203,21 @@ func (ar *articleRepository) List(ctx context.Context, authorId int64, offset in
 		},
 	)
 
-	// 异步回写缓存（非阻塞）
-	go func() {
-		err = ar.articleCache.SetFirstPage(ctx, authorId, data)
-		if err != nil {
-			ar.l.Error("回写缓存失败！", logger.Error(err))
-		}
-	}()
+	// 异步回写首页缓存（非阻塞）。缓存写入使用独立且有界的 Context，
+	// 避免 HTTP 请求结束后取消信号立即中断回写。
+	// 同时复制切片，防止缓存层裁剪正文时修改正在返回给调用方的数据。
+	if offset == 0 {
+		cacheData := append([]domain.Article(nil), data...)
+		go func(articles []domain.Article) {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+
+			cacheErr := ar.articleCache.SetFirstPage(cacheCtx, authorId, articles)
+			if cacheErr != nil {
+				ar.l.Error("回写缓存失败！", logger.Error(cacheErr))
+			}
+		}(cacheData)
+	}
 
 	return data, nil
 }

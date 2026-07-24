@@ -175,7 +175,9 @@ func (ad *articleDAO) GetById(ctx context.Context, id int64) (Article, error) {
 
 func (ad *articleDAO) GetByPubId(ctx context.Context, id int64) (PublishArticle, error) {
 	var pubArt PublishArticle
-	err := ad.db.WithContext(ctx).Where("id = ?", id).First(&pubArt).Error
+	err := ad.db.WithContext(ctx).
+		Where("id = ? AND status = ?", id, domain.ArticleStatusPublished.ToUint8()).
+		First(&pubArt).Error
 	return pubArt, err
 }
 

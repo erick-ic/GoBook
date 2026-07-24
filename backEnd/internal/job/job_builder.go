@@ -2,6 +2,8 @@ package job
 
 import (
 	"GoBook/pkg/logger"
+	"fmt"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -46,6 +48,17 @@ func (jb *CronJobBuilder) Build(job Job) cron.Job {
 		var success bool
 
 		defer func() {
+			if panicValue := recover(); panicValue != nil {
+				// 定时任务运行在独立 goroutine 中；必须在调度边界恢复 panic，
+				// 否则任意一个任务的未处理 panic 都会终止整个进程。
+				jb.l.Error(
+					"任务发生 panic",
+					logger.String("job", name),
+					logger.String("panic", fmt.Sprint(panicValue)),
+					logger.String("stack", string(debug.Stack())),
+				)
+			}
+
 			jb.l.Info("任务结束", logger.String("job", name))
 			duration := time.Since(start)
 			jb.vector.WithLabelValues(

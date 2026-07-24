@@ -32,11 +32,24 @@ type interactiveService struct {
 	repo repository.InteractiveRepository
 }
 
-// GetByIds 批量获取互动数据（预留接口，尚未实现）
-// 用于排行榜服务批量查询多篇文章的点赞数
+// GetByIds 批量获取互动数据，用于排行榜服务查询多篇文章的点赞数。
+// ids 为空时直接返回空结果，避免向下游发起无意义的数据库查询。
 func (is *interactiveService) GetByIds(ctx context.Context, biz string, ids []int64) (map[int64]domain.Interactive, error) {
-	//TODO implement me
-	panic("implement me")
+	if len(ids) == 0 {
+		// 查询成功，但结果为空
+		return map[int64]domain.Interactive{}, nil
+	}
+
+	iters, err := is.repo.GetByIds(ctx, biz, ids)
+	if err != nil {
+		// 查询失败，没有有效结果
+		return nil, err
+	}
+	res := make(map[int64]domain.Interactive, len(iters))
+	for _, inter := range iters {
+		res[inter.BizId] = inter
+	}
+	return res, nil
 }
 
 // Get 获取互动数据

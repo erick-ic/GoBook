@@ -5,6 +5,8 @@ import (
 	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
 	"context"
+
+	"github.com/ecodeclub/ekit/slice"
 )
 
 // InteractiveRepository 互动仓储接口，定义互动数据访问操作
@@ -25,12 +27,23 @@ type InteractiveRepository interface {
 	DecrLike(ctx context.Context, biz string, id int64, uid int64) error
 	// Get 查询互动数据（阅读数/点赞数/收藏数）
 	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
+	GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error)
 }
 
 // interactiveRepository 互动仓储实现类
 type interactiveRepository struct {
 	dao   dao.InteractiveDAO     // 互动DAO，操作数据库
 	cache cache.InteractiveCache // 互动缓存，操作 Redis
+}
+
+func (ir *interactiveRepository) GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error) {
+	inters, err := ir.dao.GetByIds(ctx, biz, ids)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(inters, func(idx int, src dao.Interactive) domain.Interactive {
+		return ir.toDomain(src)
+	}), nil
 }
 
 // Get 查询互动数据
@@ -108,6 +121,7 @@ func NewInteractiveRepository(dao dao.InteractiveDAO, cache cache.InteractiveCac
 // toDomain 将DAO实体转换为领域模型
 func (ir *interactiveRepository) toDomain(ie dao.Interactive) domain.Interactive {
 	return domain.Interactive{
+		BizId:      ie.BizId,
 		ReadCnt:    ie.ReadCnt,
 		LikeCnt:    ie.LikeCnt,
 		CollectCnt: ie.CollectCnt,
