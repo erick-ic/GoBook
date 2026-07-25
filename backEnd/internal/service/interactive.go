@@ -25,11 +25,20 @@ type InteractiveService interface {
 	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
 	// GetByIds 批量获取互动数据（用于排行榜计算）
 	GetByIds(ctx context.Context, biz string, ids []int64) (map[int64]domain.Interactive, error)
+	// Collect 将业务对象加入用户指定的收藏夹，并增加该业务对象的聚合收藏数。
+	// id 是业务对象 ID，cid 是收藏夹 ID，uid 是执行收藏的用户 ID。
+	Collect(ctx context.Context, biz string, id int64, cid int64, uid int64) error
 }
 
 // interactiveService 互动服务实现类
 type interactiveService struct {
 	repo repository.InteractiveRepository
+}
+
+// Collect 将收藏操作交给仓储层。
+// 数据库事务以及数据库与 Redis 缓存之间的更新顺序由 Repository 统一协调。
+func (is *interactiveService) Collect(ctx context.Context, biz string, id int64, cid int64, uid int64) error {
+	return is.repo.AddCollectItem(ctx, biz, id, cid, uid)
 }
 
 // GetByIds 批量获取互动数据，用于排行榜服务查询多篇文章的点赞数。

@@ -21,10 +21,45 @@ type InteractiveDAO interface {
 	// BatchIncrReadCnt 批量增加阅读数（事务内循环执行）
 	BatchIncrReadCnt(ctx context.Context, bizs []string, ids []int64) error
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error)
+	// InsertCollectBiz 在事务内保存用户收藏关系并增加业务对象的聚合收藏数。
+	InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) error
 }
 
 type interactiveDAO struct {
 	db *gorm.DB
+}
+
+// InsertCollectBiz 在一个事务中完成收藏操作的两次数据库写入：
+//  1. 向 UserCollectionBiz 写入“用户—业务对象—收藏夹”的明细关系。
+//  2. Upsert Interactive；记录已存在时 collect_cnt 原子加 1，否则以 1 创建。
+//
+// UserCollectionBiz 上的联合唯一索引会阻止同一用户重复收藏同一个业务对象；
+// 当前实现遇到重复收藏时会直接返回唯一键冲突错误，不会重复增加收藏数。
+func (idao *interactiveDAO) InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) error {
+	now := time.Now().UnixMilli()
+	cb.Utime = now
+	cb.Ctime = now
+	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先保存用户收藏明细；失败时终止事务，聚合收藏数不会变化。
+		err := tx.Create(&cb).Error
+		if err != nil {
+			return err
+		}
+
+		// 再按 biz + biz_id 更新聚合数据，供文章详情等读接口统一查询。
+		return tx.WithContext(ctx).Clauses(clause.OnConflict{
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"collect_cnt": gorm.Expr("`collect_cnt` + 1"),
+				"utime":       now,
+			}),
+		}).Create(&Interactive{
+			Biz:        cb.Biz,
+			BizId:      cb.BizId,
+			CollectCnt: 1,
+			Ctime:      now,
+			Utime:      now,
+		}).Error
+	})
 }
 
 func (idao *interactiveDAO) GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error) {
@@ -64,8 +99,24 @@ func (idao *interactiveDAO) Get(ctx context.Context, biz string, id int64) (Inte
 
 // DeleteLikeInfo 取消点赞（预留接口，尚未实现）
 func (idao *interactiveDAO) DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) error {
-	//TODO implement me
-	panic("implement me")
+	now := time.Now().UnixMilli()
+	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Model(&UserLikeBiz{}).
+			Where("uid=? AND biz_id = ? AND biz=?", uid, id, biz).
+			Updates(map[string]interface{}{
+				"utime":  now,
+				"status": 0,
+			}).Error
+		if err != nil {
+			return err
+		}
+		return tx.Model(&Interactive{}).
+			Where("biz =? AND biz_id=?", biz, id).
+			Updates(map[string]interface{}{
+				"like_cnt": gorm.Expr("`like_cnt` - 1"),
+				"utime":    now,
+			}).Error
+	})
 }
 
 // InsertLikeInfo 点赞
@@ -186,4 +237,17 @@ type UserLikeBiz struct {
 	Status uint8 // 状态：0=已取消，1=有效（软删除标记）
 	Ctime  int64 // 创建时间（毫秒时间戳）
 	Utime  int64 // 更新时间（毫秒时间戳）
+}
+
+// UserCollectionBiz 记录一条用户收藏明细。
+// Interactive 保存文章维度的聚合收藏数，本表则用于回答“谁收藏了什么、放在哪个收藏夹”。
+type UserCollectionBiz struct {
+	Id int64 `gorm:"primaryKey,autoIncrement"`
+	// uid + biz + biz_id 唯一，避免同一用户重复收藏同一业务对象。
+	Uid   int64  `gorm:"uniqueIndex:uid_biz_type_id"`                   // 收藏用户 ID
+	BizId int64  `gorm:"uniqueIndex:uid_biz_type_id"`                   // 被收藏的业务对象 ID，文章场景下为文章 ID
+	Biz   string `gorm:"type:varchar(128);uniqueIndex:uid_biz_type_id"` // 业务类型，例如 article
+	Cid   int64  `gorm:"index"`                                         // 收藏夹 ID，建立索引以支持按收藏夹查询
+	Utime int64  // 更新时间（毫秒时间戳）
+	Ctime int64  // 创建时间（毫秒时间戳）
 }

@@ -31,6 +31,9 @@ type InteractiveCache interface {
 	IncrReadCntIfPresent(ctx context.Context, biz string, id int64) error
 	// IncrLikeCntIfPresent 增加点赞数缓存（仅当 key 存在时才 HINCRBY）
 	IncrLikeCntIfPresent(ctx context.Context, biz string, id int64) error
+	// IncrCollectCntIfPresent 增加收藏数缓存（仅当 key 存在时才 HINCRBY）
+	IncrCollectCntIfPresent(ctx context.Context, biz string, id int64) error
+	DecrLikeCntIfPresent(ctx context.Context, biz string, id int64) error
 }
 
 // RedisInteractiveCache 互动数据 Redis 缓存实现
@@ -38,8 +41,21 @@ type RedisInteractiveCache struct {
 	client redis.Cmdable
 }
 
+// IncrCollectCntIfPresent 使用 Lua 脚本原子检查缓存是否存在，并递增 collect_cnt。
+// id 用于生成 interactive:{biz}:{id} 缓存 key；收藏动作的增量应固定为 1。
+func (rc *RedisInteractiveCache) IncrCollectCntIfPresent(ctx context.Context, biz string, id int64) error {
+	key := rc.key(biz, id)
+	return rc.client.Eval(ctx, luaIncrCnt, []string{key}, fieldCollectCnt, id).Err()
+}
+
 func NewRedisInteractiveCache(client redis.Cmdable) InteractiveCache {
-	return &RedisInteractiveCache{client: client}
+	return &RedisInteractiveCache{
+		client: client,
+	}
+}
+func (rc *RedisInteractiveCache) DecrLikeCntIfPresent(ctx context.Context, biz string, id int64) error {
+	key := rc.key(biz, id)
+	return rc.client.Eval(ctx, luaIncrCnt, []string{key}, fieldLikeCnt, -1).Err()
 }
 
 // IncrLikeCntIfPresent 增加点赞数缓存

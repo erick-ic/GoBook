@@ -26,6 +26,13 @@ type ArticleLikeReq struct {
 	Id int64 `json:"id"`
 }
 
+// ArticleCollectReq 是收藏文章的请求体。
+// Id 标识被收藏的文章，Cid 标识文章要存入的收藏夹。
+type ArticleCollectReq struct {
+	Id  int64 `json:"id"`  // 文章 ID，对应互动数据的 biz_id
+	Cid int64 `json:"cid"` // 收藏夹 ID，用于组织用户的收藏记录
+}
+
 // ArticleVO 文章视图对象，返回给前端的展示数据
 // 根据不同接口返回不同字段：
 //   - 列表接口：返回 Id/Title/Abstract/Status/Ctime/Utime（不含 Content）

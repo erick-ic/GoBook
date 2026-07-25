@@ -28,12 +28,35 @@ type InteractiveRepository interface {
 	// Get 查询互动数据（阅读数/点赞数/收藏数）
 	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error)
+	// AddCollectItem 保存用户收藏关系，并同步更新数据库和缓存中的收藏数。
+	AddCollectItem(ctx context.Context, biz string, id int64, cid int64, uid int64) error
 }
 
 // interactiveRepository 互动仓储实现类
 type interactiveRepository struct {
 	dao   dao.InteractiveDAO     // 互动DAO，操作数据库
 	cache cache.InteractiveCache // 互动缓存，操作 Redis
+}
+
+// AddCollectItem 协调收藏关系、聚合收藏数和缓存的更新。
+//
+// 执行顺序：
+//  1. DAO 在同一事务中写入用户收藏关系，并将 Interactive.collect_cnt 加 1。
+//  2. 数据库事务成功后，按 Cache-If-Present 策略更新已存在的 Redis 缓存。
+//
+// Redis 更新失败不会回滚已经提交的数据库事务，因此数据库仍然是最终可信数据源。
+func (ir *interactiveRepository) AddCollectItem(ctx context.Context, biz string, id int64, cid int64, uid int64) error {
+	err := ir.dao.InsertCollectBiz(ctx, dao.UserCollectionBiz{
+		Biz:   biz,
+		BizId: id,
+		Cid:   cid,
+		Uid:   uid,
+	})
+	if err != nil {
+		return err
+	}
+
+	return ir.cache.IncrCollectCntIfPresent(ctx, biz, id)
 }
 
 func (ir *interactiveRepository) GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error) {
@@ -59,8 +82,6 @@ func (ir *interactiveRepository) Get(ctx context.Context, biz string, id int64) 
 }
 
 // IncrLike 点赞
-// 调用链路：Service.Like → Repository.IncrLike → DAO.InsertLikeInfo + Cache.IncrLikeCntIfPresent
-//
 // 执行流程：
 //  1. 写入 UserLikeBiz 表（记录用户点赞行为，幂等）
 //  2. 更新 Interactive 表的 like_cnt（原子递增）
@@ -74,14 +95,12 @@ func (ir *interactiveRepository) IncrLike(ctx context.Context, biz string, id in
 }
 
 // DecrLike 取消点赞
-// 调用链路：Service.CancelLike → Repository.DecrLike → DAO.DeleteLikeInfo
-// TODO: 当前未更新缓存的 like_cnt，可能导致缓存与数据库不一致
 func (ir *interactiveRepository) DecrLike(ctx context.Context, biz string, id int64, uid int64) error {
 	err := ir.dao.DeleteLikeInfo(ctx, biz, id, uid)
 	if err != nil {
 		return err
 	}
-	return nil
+	return ir.cache.DecrLikeCntIfPresent(ctx, biz, id)
 }
 
 // IncrReadCnt 增加阅读数

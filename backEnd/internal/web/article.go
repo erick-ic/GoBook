@@ -70,6 +70,32 @@ func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 		"/like",
 		ginx.WrapBodyAndToken[ArticleLikeReq, *ijwt.UserClaims](ah.Like),
 	) // 点赞/取消点赞文章
+
+	// 收藏请求从请求体读取文章 ID 和收藏夹 ID，并从 JWT claims 获取当前用户 ID。
+	pubGroup.POST("/collect", ginx.WrapBodyAndToken[ArticleCollectReq, *ijwt.UserClaims](ah.Collect))
+}
+
+// Collect 处理文章收藏请求。
+// 调用链路：POST /pub/collect → InteractiveService.Collect → Repository.AddCollectItem → DAO + Redis。
+//
+// 参数含义：
+//   - req.Id：被收藏的文章 ID，也是互动数据中的 biz_id
+//   - req.Cid：用户选择的收藏夹 ID
+//   - uc.Uid：执行收藏操作的用户 ID，由 JWT claims 提供
+//
+// Handler 只负责转发请求和包装响应；收藏关系落库、收藏数递增及缓存更新由互动模块完成。
+func (ah *ArticleHandler) Collect(ctx *gin.Context, req ArticleCollectReq, uc *ijwt.UserClaims) (Result, error) {
+	err := ah.interSvc.Collect(ctx, ah.biz, req.Id, req.Cid, uc.Uid)
+	if err != nil {
+		return Result{
+			Code: 5,
+			Msg:  "系统错误！",
+		}, err
+	}
+	return Result{
+		Code: 0,
+		Msg:  "收藏成功～",
+	}, nil
 }
 
 // Like 处理文章点赞请求
@@ -296,6 +322,7 @@ func (ah *ArticleHandler) ArticleList(ctx *gin.Context, req ListReq, uc *ijwt.Us
 // Detail 处理文章详情查询请求（作者视角）
 // 调用链路：GET /articles/detail/:id → Detail → ArticleService.GetById → Repository（制作库）
 // 用于作者编辑文章时获取完整内容（含未发表草稿）
+// 注意：当前接口没有查询 InteractiveService，因此不会返回阅读数、点赞数和收藏数。
 func (ah *ArticleHandler) Detail(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
