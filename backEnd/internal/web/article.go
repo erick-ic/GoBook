@@ -1,6 +1,7 @@
 package web
 
 import (
+	service2 "GoBook/interactive/service"
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
 	ijwt "GoBook/internal/web/jwt"
@@ -17,10 +18,10 @@ import (
 // ArticleHandler 文章处理器，处理文章相关的HTTP请求
 // 调用链路：HTTP请求 → ArticleHandler → ArticleService → ArticleRepository → ArticleDAO
 type ArticleHandler struct {
-	svc      service.ArticleService     // 文章服务接口，处理文章核心业务
-	interSvc service.InteractiveService // 互动服务接口，处理点赞/收藏/阅读数
-	l        logger.LoggerV1            // 日志记录器
-	biz      string                     // 业务标识，用于互动服务区分业务类型（"article"）
+	svc      service.ArticleService      // 文章服务接口，处理文章核心业务
+	interSvc service2.InteractiveService // 互动服务接口，处理点赞/收藏/阅读数
+	l        logger.LoggerV1             // 日志记录器
+	biz      string                      // 业务标识，用于互动服务区分业务类型（"article"）
 }
 
 // NewArticleHandler 创建文章处理器实例
@@ -28,7 +29,7 @@ type ArticleHandler struct {
 func NewArticleHandler(
 	svc service.ArticleService,
 	l logger.LoggerV1,
-	interSvc service.InteractiveService,
+	interSvc service2.InteractiveService,
 ) *ArticleHandler {
 	return &ArticleHandler{
 		svc:      svc,

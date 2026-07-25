@@ -1,7 +1,7 @@
 package ioc
 
 import (
-	"GoBook/internal/events/article"
+	"GoBook/interactive/events"
 
 	"github.com/IBM/sarama"
 	"github.com/spf13/viper"
@@ -42,11 +42,11 @@ func InitSyncProducer(c sarama.Client) sarama.SyncProducer {
 
 // InitConsumers 将所有消费者汇总成一个切片，供 App 启动时统一调用 Start()
 // 新增消费者时，只需多加一个参数，Wire 自动注入
-func InitConsumers(c1 *article.InteractiveReadEventConsumer) []article.Consumer {
-	return []article.Consumer{c1}
+func InitConsumers(c1 *events.InteractiveReadEventConsumer) []events.Consumer {
+	return []events.Consumer{c1}
 }
 
 // InitBatchConsumers 批量消费
-func InitBatchConsumers(c1 *article.InteractiveReadEventBatchConsumer) []article.Consumer {
-	return []article.Consumer{c1}
+func InitBatchConsumers(c1 *events.InteractiveReadEventBatchConsumer) []events.Consumer {
+	return []events.Consumer{c1}
 }

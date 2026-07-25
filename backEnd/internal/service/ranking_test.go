@@ -1,6 +1,8 @@
 package service
 
 import (
+	domain2 "GoBook/interactive/domain"
+	service2 "GoBook/interactive/service"
 	"GoBook/internal/domain"
 	svcmocks "GoBook/internal/service/mocks"
 	"context"
@@ -25,13 +27,13 @@ func TestRankingTopN(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mock           func(ctrl *gomock.Controller) (ArticleService, InteractiveService)
+		mock           func(ctrl *gomock.Controller) (ArticleService, service2.InteractiveService)
 		expectErr      error
 		expectArticles []domain.Article
 	}{
 		{
 			name: "计算成功",
-			mock: func(ctrl *gomock.Controller) (ArticleService, InteractiveService) {
+			mock: func(ctrl *gomock.Controller) (ArticleService, service2.InteractiveService) {
 				artSvc := svcmocks.NewMockArticleService(ctrl)
 
 				// 模拟第1批：offset=0, limit=2 → [Id:1, Id:2]
@@ -53,19 +55,19 @@ func TestRankingTopN(t *testing.T) {
 				interSvc := svcmocks.NewMockInteractiveService(ctrl)
 				// 第1批互动数据：Id1(100赞), Id2(200赞)
 				interSvc.EXPECT().GetByIds(gomock.Any(), "article", []int64{1, 2}).
-					Return(map[int64]domain.Interactive{
+					Return(map[int64]domain2.Interactive{
 						1: {BizId: 1, LikeCnt: 100},
 						2: {BizId: 2, LikeCnt: 200},
 					}, nil)
 				// 第2批互动数据：Id3(300赞), Id4(400赞)
 				interSvc.EXPECT().GetByIds(gomock.Any(), "article", []int64{3, 4}).
-					Return(map[int64]domain.Interactive{
+					Return(map[int64]domain2.Interactive{
 						3: {BizId: 3, LikeCnt: 300},
 						4: {BizId: 4, LikeCnt: 400},
 					}, nil)
 				// 第3批互动数据：空ID列表，返回空map
 				interSvc.EXPECT().GetByIds(gomock.Any(), "article", []int64{}).
-					Return(map[int64]domain.Interactive{}, nil)
+					Return(map[int64]domain2.Interactive{}, nil)
 
 				return artSvc, interSvc
 			},

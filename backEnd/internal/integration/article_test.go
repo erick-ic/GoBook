@@ -1,8 +1,8 @@
 package integration
 
 import (
-	"GoBook/integration/startup"
 	"GoBook/internal/domain"
+	startup2 "GoBook/internal/integration/startup"
 	newDAO "GoBook/internal/repository/dao/article"
 	ijwt "GoBook/internal/web/jwt"
 	"bytes"
@@ -36,10 +36,10 @@ func (s *ArticleTestSuite) SetupSuite() {
 			Uid: 21,
 		})
 	})
-	s.db = startup.InitDB()
+	s.db = startup2.InitDB()
 
 	//articleHandler := web.NewArticleHandler()
-	articleHandler := startup.InitArticleHandler()
+	articleHandler := startup2.InitArticleHandler()
 	articleHandler.RegisterRouters(s.server)
 }
 

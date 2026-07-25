@@ -1,8 +1,8 @@
 package service
 
 import (
-	"GoBook/internal/domain"
-	"GoBook/internal/repository"
+	"GoBook/interactive/domain"
+	"GoBook/interactive/repository"
 	"context"
 )
 

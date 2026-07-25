@@ -3,6 +3,10 @@
 package startup
 
 import (
+	repository2 "GoBook/interactive/repository"
+	cache2 "GoBook/interactive/repository/cache"
+	dao2 "GoBook/interactive/repository/dao"
+	service2 "GoBook/interactive/service"
 	"GoBook/internal/repository"
 	"GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
@@ -45,10 +49,10 @@ var articleSvcProviderSet = wire.NewSet(
 )
 
 var interactiveProviderSet = wire.NewSet(
-	cache.NewRedisInteractiveCache,
-	dao.NewInteractiveDAO,
-	repository.NewInteractiveRepository,
-	service.NewInteractiveService,
+	cache2.NewRedisInteractiveCache,
+	dao2.NewInteractiveDAO,
+	repository2.NewInteractiveRepository,
+	service2.NewInteractiveService,
 )
 
 func InitWebServer() *gin.Engine {
@@ -89,10 +93,10 @@ func InitArticleHandler() *web.ArticleHandler {
 		cache.NewRedisArticleCache,
 		article.NewArticleRepository,
 		service.NewArticleService,
-		service.NewInteractiveService,
-		dao.NewInteractiveDAO,
-		cache.NewRedisInteractiveCache,
-		repository.NewInteractiveRepository,
+		service2.NewInteractiveService,
+		dao2.NewInteractiveDAO,
+		cache2.NewRedisInteractiveCache,
+		repository2.NewInteractiveRepository,
 		web.NewArticleHandler,
 		// 编辑文章测试不需要发送阅读事件。
 		InitArticleProducer,

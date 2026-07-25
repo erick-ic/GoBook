@@ -1,7 +1,8 @@
-package article
+package events
 
 import (
-	"GoBook/internal/repository"
+	"GoBook/interactive/repository"
+	"GoBook/internal/events/article"
 	"GoBook/pkg/logger"
 	"GoBook/pkg/saramax"
 	"context"
@@ -52,8 +53,8 @@ func (i *InteractiveReadEventConsumer) Start() error {
 	}
 	go func() {
 		er := cg.Consume(context.Background(),
-			[]string{TopicReadEvent},                      // 监听的主题列表
-			saramax.NewHandler[ReadEvent](i.l, i.Consume)) // 泛型 Handler，自动反序列化为 ReadEvent
+			[]string{article.TopicReadEvent},                      // 监听的主题列表
+			saramax.NewHandler[article.ReadEvent](i.l, i.Consume)) // 泛型 Handler，自动反序列化为 ReadEvent
 		if er != nil {
 			i.l.Error("退出消费", logger.Error(er))
 		}
@@ -66,7 +67,7 @@ func (i *InteractiveReadEventConsumer) Start() error {
 // 返回 error 只会被 Handler 记录日志，不会阻止后续消息消费（已 MarkMessage）
 func (i *InteractiveReadEventConsumer) Consume(
 	msg *sarama.ConsumerMessage,
-	event ReadEvent,
+	event article.ReadEvent,
 ) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

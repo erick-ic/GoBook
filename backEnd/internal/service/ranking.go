@@ -1,6 +1,7 @@
 package service
 
 import (
+	service2 "GoBook/interactive/service"
 	"GoBook/internal/domain"
 	"GoBook/internal/repository"
 	"context"
@@ -20,7 +21,7 @@ type RankingService interface {
 // 采用"分批取数 + 优先队列维护TopN"的流式算法，避免一次性加载全部文章到内存
 type BatchRankingService struct {
 	articleSvc ArticleService
-	interSvc   InteractiveService
+	interSvc   service2.InteractiveService
 	batchSize  int // 每批取文章数
 	topNum     int // 最终保留的 TopN 数量
 	// scoreFunc 计算单篇文章得分，参数为发布时间和点赞数
@@ -34,7 +35,7 @@ type BatchRankingService struct {
 // 发布时间越久，时间衰减越明显。
 func NewBatchRankingService(
 	articleSvc ArticleService,
-	interSvc InteractiveService,
+	interSvc service2.InteractiveService,
 	repo repository.RankingRepository,
 ) RankingService {
 	return &BatchRankingService{

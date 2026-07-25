@@ -1,9 +1,9 @@
 package repository
 
 import (
-	"GoBook/internal/domain"
-	"GoBook/internal/repository/cache"
-	"GoBook/internal/repository/dao"
+	"GoBook/interactive/domain"
+	"GoBook/interactive/repository/cache"
+	"GoBook/interactive/repository/dao"
 	"context"
 
 	"github.com/ecodeclub/ekit/slice"
