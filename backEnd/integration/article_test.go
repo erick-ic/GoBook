@@ -44,8 +44,14 @@ func (s *ArticleTestSuite) SetupSuite() {
 }
 
 func (s *ArticleTestSuite) TearDownTest() {
-	//清空所有数据，且自增组件恢复到1
-	s.db.Exec("TRUNCATE TABLE articles")
+	// 兜底清理测试数据，避免影响其他集成测试。
+	s.cleanArticles(s.T())
+}
+
+func (s *ArticleTestSuite) cleanArticles(t *testing.T) {
+	t.Helper()
+	// TRUNCATE 同时重置自增主键，保证“新建帖子”用例稳定得到 ID 1。
+	require.NoError(t, s.db.Exec("TRUNCATE TABLE articles").Error)
 }
 
 func TestArticle(t *testing.T) {
@@ -147,7 +153,7 @@ func (s *ArticleTestSuite) TestEdit() {
 			},
 		},
 		{
-			name: "修改别人的帖子成功",
+			name: "修改别人的帖子失败",
 			ctx:  context.Background(),
 			article: Article{
 				Id:      3,
@@ -183,7 +189,8 @@ func (s *ArticleTestSuite) TestEdit() {
 					Status:   domain.ArticleStatusPublished.ToUint8(),
 				}, article)
 			},
-			expectCode: http.StatusInternalServerError,
+			// 当前接口使用统一业务响应：业务失败由 Result.Code 表示，HTTP 状态仍为 200。
+			expectCode: http.StatusOK,
 			expectBody: Result[int64]{
 				Code: 5,
 				Msg:  "系统错误！",
@@ -192,6 +199,13 @@ func (s *ArticleTestSuite) TestEdit() {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// testify 的 SetupTest/TearDownTest 只包裹 TestEdit，不会逐个包裹内部的
+			// t.Run，因此每个表驱动子用例都要独立清理，避免主键和数据相互污染。
+			s.cleanArticles(t)
+			t.Cleanup(func() {
+				s.cleanArticles(t)
+			})
+
 			//准备数据
 			tc.before(t)
 

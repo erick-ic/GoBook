@@ -11,6 +11,8 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+//go:generate mockgen -source=interactive.go -package=svcmocks -destination=./mocks/interactive.mock.go
+
 // TestRankingTopN 测试排行榜 TopN 计算
 // 验证"分批取数 + 优先队列"的流式算法是否正确：
 //  1. 模拟3批文章数据（每批2条，最后一批为空）
