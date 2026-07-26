@@ -8,13 +8,16 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// ErrRecordNotFound 屏蔽仓储层对 GORM 包的直接依赖。
+var ErrRecordNotFound = gorm.ErrRecordNotFound
+
 // InteractiveDAO 互动数据访问对象接口，定义互动数据的数据库操作
 type InteractiveDAO interface {
 	// IncrReadCnt 增加阅读数（Upsert + 原子递增）
 	IncrReadCnt(ctx context.Context, biz string, bizId int64) error
 	// InsertLikeInfo 点赞（事务内写入点赞记录 + 更新点赞数）
 	InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) error
-	// DeleteLikeInfo 取消点赞（预留接口，尚未实现）
+	// DeleteLikeInfo 将点赞记录标记为无效，并减少聚合点赞数。
 	DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) error
 	// Get 查询互动数据
 	Get(ctx context.Context, biz string, id int64) (Interactive, error)
@@ -23,10 +26,33 @@ type InteractiveDAO interface {
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error)
 	// InsertCollectBiz 在事务内保存用户收藏关系并增加业务对象的聚合收藏数。
 	InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) error
+	// GetLikeInfo 查询用户有效的点赞记录。
+	GetLikeInfo(ctx context.Context, biz string, id int64, uid int64) (UserLikeBiz, error)
+	// GetCollectInfo 查询用户的收藏记录。
+	GetCollectInfo(ctx context.Context, biz string, id int64, uid int64) (UserCollectionBiz, error)
 }
 
 type interactiveDAO struct {
 	db *gorm.DB
+}
+
+// GetLikeInfo 仅返回 status=1 的有效点赞记录。
+func (idao *interactiveDAO) GetLikeInfo(ctx context.Context, biz string, id int64, uid int64) (UserLikeBiz, error) {
+	var res UserLikeBiz
+	err := idao.db.WithContext(ctx).
+		Where("biz = ? AND biz_id = ? AND uid = ? AND status = ?",
+			biz, id, uid, 1).
+		First(&res).Error
+	return res, err
+}
+
+// GetCollectInfo 按用户和业务对象查询收藏明细。
+func (idao *interactiveDAO) GetCollectInfo(ctx context.Context, biz string, id int64, uid int64) (UserCollectionBiz, error) {
+	var res UserCollectionBiz
+	err := idao.db.WithContext(ctx).
+		Where("biz = ? AND biz_id = ? AND uid = ?", biz, id, uid).
+		First(&res).Error
+	return res, err
 }
 
 // InsertCollectBiz 在一个事务中完成收藏操作的两次数据库写入：
@@ -97,7 +123,7 @@ func (idao *interactiveDAO) Get(ctx context.Context, biz string, id int64) (Inte
 	return inter, err
 }
 
-// DeleteLikeInfo 取消点赞（预留接口，尚未实现）
+// DeleteLikeInfo 在同一事务中软删除点赞关系并减少聚合点赞数。
 func (idao *interactiveDAO) DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) error {
 	now := time.Now().UnixMilli()
 	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

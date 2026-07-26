@@ -4,6 +4,8 @@ import (
 	"GoBook/interactive/domain"
 	"GoBook/interactive/repository"
 	"context"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // InteractiveService 互动服务接口，定义点赞/收藏/阅读数等互动业务操作
@@ -21,8 +23,8 @@ type InteractiveService interface {
 	Like(ctx context.Context, biz string, articleId int64, uid int64) error
 	// CancelLike 取消点赞
 	CancelLike(ctx context.Context, biz string, articleId int64, uid int64) error
-	// Get 获取互动数据（阅读数/点赞数/收藏数）
-	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
+	// Get 获取互动数据以及指定用户的点赞、收藏状态。
+	Get(ctx context.Context, biz string, id int64, uid int64) (domain.Interactive, error)
 	// GetByIds 批量获取互动数据（用于排行榜计算）
 	GetByIds(ctx context.Context, biz string, ids []int64) (map[int64]domain.Interactive, error)
 	// Collect 将业务对象加入用户指定的收藏夹，并增加该业务对象的聚合收藏数。
@@ -61,14 +63,33 @@ func (is *interactiveService) GetByIds(ctx context.Context, biz string, ids []in
 	return res, nil
 }
 
-// Get 获取互动数据
-// 调用链路：PubDetail Handler → Get → Repository.Get → DAO.Get
-// 注意：当前直接查数据库，未走缓存（后续可优化为先查缓存）
-func (is *interactiveService) Get(ctx context.Context, biz string, id int64) (domain.Interactive, error) {
+// Get 先获取聚合计数，再并发查询当前用户的点赞与收藏状态。
+// 聚合数据当前直接读取数据库，用户态查询相互独立，可并行执行。
+func (is *interactiveService) Get(ctx context.Context, biz string, id int64, uid int64) (domain.Interactive, error) {
 	inter, err := is.repo.Get(ctx, biz, id)
 	if err != nil {
 		return domain.Interactive{}, err
 	}
+
+	var liked, collected bool
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var queryErr error
+		liked, queryErr = is.repo.Liked(egCtx, biz, id, uid)
+		return queryErr
+	})
+
+	eg.Go(func() error {
+		var queryErr error
+		collected, queryErr = is.repo.Collected(egCtx, biz, id, uid)
+		return queryErr
+	})
+	if err = eg.Wait(); err != nil {
+		return domain.Interactive{}, err
+	}
+
+	inter.Liked = liked
+	inter.Collected = collected
 	return inter, nil
 }
 

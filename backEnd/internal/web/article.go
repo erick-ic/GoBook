@@ -185,7 +185,7 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 	}
 
 	// 获取互动数据（阅读数/点赞数/收藏数/是否点赞/是否收藏）
-	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId)
+	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId, claims.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -206,6 +206,8 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 		ReadCnt:    iter.ReadCnt,
 		LikeCnt:    iter.LikeCnt,
 		CollectCnt: iter.CollectCnt,
+		Liked:      iter.Liked,
+		Collected:  iter.Collected,
 
 		Status: res.Status.ToUint8(),
 		Ctime:  res.Ctime.Format(time.DateTime),

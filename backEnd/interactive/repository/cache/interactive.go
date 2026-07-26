@@ -45,7 +45,7 @@ type RedisInteractiveCache struct {
 // id 用于生成 interactive:{biz}:{id} 缓存 key；收藏动作的增量应固定为 1。
 func (rc *RedisInteractiveCache) IncrCollectCntIfPresent(ctx context.Context, biz string, id int64) error {
 	key := rc.key(biz, id)
-	return rc.client.Eval(ctx, luaIncrCnt, []string{key}, fieldCollectCnt, id).Err()
+	return rc.client.Eval(ctx, luaIncrCnt, []string{key}, fieldCollectCnt, 1).Err()
 }
 
 func NewRedisInteractiveCache(client redis.Cmdable) InteractiveCache {

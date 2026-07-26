@@ -1,0 +1,27 @@
+# Buf 代码生成模板版本。
+version: v1
+
+# 由 Buf 统一管理各 .proto 文件的语言相关选项。
+managed:
+  enabled: true
+
+  # 为生成的 Go 包设置默认导入路径前缀。
+  # 必须与 go.mod 的 module 路径保持一致，避免生成的描述符记录错误导入路径。
+  go_package_prefix:
+    default: "GoBook/api/proto/gen"
+
+# 按顺序执行的代码生成插件。
+plugins:
+  # 生成 protobuf 消息、枚举及序列化相关的 Go 代码（*.pb.go）。
+  - plugin: buf.build/protocolbuffers/go:v1.36.11
+    # 相对于当前工作目录的生成文件输出目录。
+    out: api/proto/gen
+    # 保持输出文件的目录结构与 .proto 源文件的相对路径一致。
+    opt: paths=source_relative
+
+  # 生成 gRPC 客户端、服务端接口及服务注册代码（*_grpc.pb.go）。
+  - plugin: buf.build/grpc/go:v1.6.2
+    # 与 protobuf 基础代码输出到同一目录。
+    out: api/proto/gen
+    # 保持输出文件的目录结构与 .proto 源文件的相对路径一致。
+    opt: paths=source_relative
