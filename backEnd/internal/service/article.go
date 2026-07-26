@@ -7,8 +7,6 @@ import (
 	"GoBook/pkg/logger"
 	"context"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 // ArticleService 文章服务接口，定义文章的核心业务操作
@@ -20,7 +18,7 @@ type ArticleService interface {
 	Withdraw(ctx context.Context, articleId, Uid int64) (int64, error)                                           // 撤回文章（同步更新两库状态）
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)                        // 按作者分页查询文章列表
 	GetById(ctx context.Context, id int64) (domain.Article, error)                                               // 查询文章详情（制作库）
-	GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error)                                   // 查询已发表文章（线上库）+ 发送阅读事件
+	GetByPubId(ctx context.Context, articleId, Uid int64) (domain.Article, error)                                // 查询已发表文章（线上库）+ 发送阅读事件
 	ListPublishedArticles(ctx context.Context, start time.Time, offset int, limit int) ([]domain.Article, error) // 查询已发表文章（排行榜用）
 }
 
@@ -86,8 +84,8 @@ func (as *articleService) GetById(ctx context.Context, id int64) (domain.Article
 //   - 而是通过 Kafka 异步解耦：Service 层发事件 → 消费者异步更新阅读数
 //   - 优点：响应快，不阻塞用户；缺点：阅读数有短暂延迟（最终一致）
 //
-// 注意：ctx 使用 *gin.Context 而非 context.Context，因为 producer.ProduceReadEvent 需要
-func (as *articleService) GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error) {
+// ctx 使用标准 context.Context，避免业务层依赖 Gin，并便于跨传输层复用。
+func (as *articleService) GetByPubId(ctx context.Context, articleId, Uid int64) (domain.Article, error) {
 	// 先查询文章详情（从线上库获取）
 	art, err := as.repo.GetByPubId(ctx, articleId)
 	if err == nil {

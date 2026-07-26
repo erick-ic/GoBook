@@ -60,6 +60,9 @@ func InitApp() *App {
 		//批量
 		events.NewInteractiveReadEventBatchConsumer,
 
+		// 同时装配本地实现和远程 gRPC，通过配置阈值灰度切流。
+		ioc.InitInteractiveGRPCClient,
+
 		//初始化DAO，缓存
 		dao.NewUserDAO,
 		dao2.NewInteractiveDAO,

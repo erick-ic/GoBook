@@ -1,7 +1,7 @@
 package service
 
 import (
-	service2 "GoBook/interactive/service"
+	interactivev1 "GoBook/api/proto/gen/interactive/v1"
 	"GoBook/internal/domain"
 	"GoBook/internal/repository"
 	"context"
@@ -21,9 +21,9 @@ type RankingService interface {
 // 采用"分批取数 + 优先队列维护TopN"的流式算法，避免一次性加载全部文章到内存
 type BatchRankingService struct {
 	articleSvc ArticleService
-	interSvc   service2.InteractiveService
-	batchSize  int // 每批取文章数
-	topNum     int // 最终保留的 TopN 数量
+	interSvc   interactivev1.InteractiveServiceClient // 批量查询互动数据，可由灰度客户端路由到本地或远程
+	batchSize  int                                    // 每批取文章数
+	topNum     int                                    // 最终保留的 TopN 数量
 	// scoreFunc 计算单篇文章得分，参数为发布时间和点赞数
 	// 返回值不能为负数（优先队列要求）
 	scoreFunc func(t time.Time, likeCnt int64) float64
@@ -35,7 +35,7 @@ type BatchRankingService struct {
 // 发布时间越久，时间衰减越明显。
 func NewBatchRankingService(
 	articleSvc ArticleService,
-	interSvc service2.InteractiveService,
+	interSvc interactivev1.InteractiveServiceClient,
 	repo repository.RankingRepository,
 ) RankingService {
 	return &BatchRankingService{
@@ -114,15 +114,18 @@ func (br *BatchRankingService) topN(ctx context.Context) ([]domain.Article, erro
 			return src.Id
 		})
 
-		// 2. 批量查询对应互动数据（点赞数等）
-		inters, err := br.interSvc.GetByIds(ctx, "article", ids)
+		// 2. 通过统一客户端批量查询互动数据；实际调用方由灰度阈值决定。
+		inters, err := br.interSvc.GetByIds(ctx, &interactivev1.GetByIdsRequest{
+			Ids: ids,
+			Biz: "article",
+		})
 		if err != nil {
 			return nil, err
 		}
 
 		// 3. 合并文章和互动数据，计算分数，维护TopN队列
 		for _, art := range arts {
-			inter, ok := inters[art.Id]
+			inter, ok := inters.Inters[art.Id]
 			if !ok {
 				// 没有互动数据，跳过（不计入排行榜）
 				continue

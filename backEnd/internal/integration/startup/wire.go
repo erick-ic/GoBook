@@ -3,6 +3,7 @@
 package startup
 
 import (
+	interactivev1 "GoBook/api/proto/gen/interactive/v1"
 	repository2 "GoBook/interactive/repository"
 	cache2 "GoBook/interactive/repository/cache"
 	dao2 "GoBook/interactive/repository/dao"
@@ -14,6 +15,7 @@ import (
 	articleDAO "GoBook/internal/repository/dao/article"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
+	"GoBook/internal/web/client"
 	"GoBook/ioc"
 
 	"github.com/gin-gonic/gin"
@@ -53,6 +55,9 @@ var interactiveProviderSet = wire.NewSet(
 	dao2.NewInteractiveDAO,
 	repository2.NewInteractiveRepository,
 	service2.NewInteractiveService,
+	// 集成测试使用本地适配器实现客户端接口，避免依赖独立的 gRPC 进程。
+	client.NewInteractiveServiceAdapter,
+	wire.Bind(new(interactivev1.InteractiveServiceClient), new(*client.InteractiveServiceAdapter)),
 )
 
 func InitWebServer() *gin.Engine {
@@ -93,10 +98,7 @@ func InitArticleHandler() *web.ArticleHandler {
 		cache.NewRedisArticleCache,
 		article.NewArticleRepository,
 		service.NewArticleService,
-		service2.NewInteractiveService,
-		dao2.NewInteractiveDAO,
-		cache2.NewRedisInteractiveCache,
-		repository2.NewInteractiveRepository,
+		interactiveProviderSet,
 		web.NewArticleHandler,
 		// 编辑文章测试不需要发送阅读事件。
 		InitArticleProducer,
