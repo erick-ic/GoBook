@@ -26,6 +26,8 @@ const (
 //  1. 读操作：不主动查缓存（当前 Get 走数据库，后续可优化）
 //  2. 写操作：数据库更新后，仅当缓存 key 存在时才更新缓存
 //  3. 避免缓存击穿：不主动创建缓存，防止恶意请求打穿到数据库
+//
+//go:generate mockgen -source=./interactive.go -package=cachemocks -destination=./mocks/interactive.mock.go InteractiveCache
 type InteractiveCache interface {
 	// IncrReadCntIfPresent 增加阅读数缓存（仅当 key 存在时才 HINCRBY）
 	IncrReadCntIfPresent(ctx context.Context, biz string, id int64) error
@@ -45,7 +47,7 @@ type RedisInteractiveCache struct {
 // id 用于生成 interactive:{biz}:{id} 缓存 key；收藏动作的增量应固定为 1。
 func (rc *RedisInteractiveCache) IncrCollectCntIfPresent(ctx context.Context, biz string, id int64) error {
 	key := rc.key(biz, id)
-	return rc.client.Eval(ctx, luaIncrCnt, []string{key}, fieldCollectCnt, id).Err()
+	return rc.client.Eval(ctx, luaIncrCnt, []string{key}, fieldCollectCnt, 1).Err()
 }
 
 func NewRedisInteractiveCache(client redis.Cmdable) InteractiveCache {

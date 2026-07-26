@@ -25,5 +25,7 @@ frontEnd/.env*.local
 *.key
 
 # ========== Mock ==========
-*.mock.go
 wire_gen.go
+
+# 集成测试依赖这些 Wire 生成函数，提交产物以保证拉取后可直接运行测试。
+!backEnd/internal/integration/startup/wire_gen.go

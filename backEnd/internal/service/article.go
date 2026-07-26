@@ -7,8 +7,6 @@ import (
 	"GoBook/pkg/logger"
 	"context"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 // ArticleService 文章服务接口，定义文章的核心业务操作
@@ -20,7 +18,7 @@ type ArticleService interface {
 	Withdraw(ctx context.Context, articleId, Uid int64) (int64, error)                                           // 撤回文章（同步更新两库状态）
 	List(ctx context.Context, uid int64, offset int, limit int) ([]domain.Article, error)                        // 按作者分页查询文章列表
 	GetById(ctx context.Context, id int64) (domain.Article, error)                                               // 查询文章详情（制作库）
-	GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error)                                   // 查询已发表文章（线上库）+ 发送阅读事件
+	GetByPubId(ctx context.Context, articleId, uid int64) (domain.Article, error)                                // 查询已发表文章（线上库）+ 发送阅读事件
 	ListPublishedArticles(ctx context.Context, start time.Time, offset int, limit int) ([]domain.Article, error) // 查询已发表文章（排行榜用）
 }
 
@@ -28,6 +26,7 @@ type ArticleService interface {
 type articleService struct {
 	repo     article.ArticleRepository // 文章仓储接口，负责数据库操作和缓存管理
 	producer events.Producer           // Kafka 生产者，用于发送阅读事件
+	l        logger.LoggerV1           // 记录异步事件发送失败，便于排查阅读数未更新
 }
 
 // ListPublishedArticles 查询已发表文章（排行榜用）
@@ -37,10 +36,11 @@ func (as *articleService) ListPublishedArticles(ctx context.Context, start time.
 }
 
 // NewArticleService 创建文章服务实例
-func NewArticleService(repo article.ArticleRepository, producer events.Producer) ArticleService {
+func NewArticleService(repo article.ArticleRepository, producer events.Producer, l logger.LoggerV1) ArticleService {
 	return &articleService{
 		repo:     repo,
 		producer: producer,
+		l:        l,
 	}
 }
 
@@ -86,21 +86,26 @@ func (as *articleService) GetById(ctx context.Context, id int64) (domain.Article
 //   - 而是通过 Kafka 异步解耦：Service 层发事件 → 消费者异步更新阅读数
 //   - 优点：响应快，不阻塞用户；缺点：阅读数有短暂延迟（最终一致）
 //
-// 注意：ctx 使用 *gin.Context 而非 context.Context，因为 producer.ProduceReadEvent 需要
-func (as *articleService) GetByPubId(ctx *gin.Context, articleId, Uid int64) (domain.Article, error) {
+// Service 只依赖标准 context.Context，避免把 Gin 的 HTTP 上下文泄漏到业务层。
+func (as *articleService) GetByPubId(ctx context.Context, articleId, uid int64) (domain.Article, error) {
 	// 先查询文章详情（从线上库获取）
 	art, err := as.repo.GetByPubId(ctx, articleId)
 	if err == nil {
 		// 查询成功后，异步发送阅读事件到 Kafka
 		// 使用 goroutine 非阻塞发送，避免影响用户阅读体验
 		go func() {
-			er := as.producer.ProduceReadEvent(
+			produceErr := as.producer.ProduceReadEvent(
 				events.ReadEvent{
 					ArticleId: articleId,
-					Uid:       Uid,
+					Uid:       uid,
 				})
-			if er != nil {
-				// TODO: 写入日志（当前静默失败，生产环境应记录错误）
+			if produceErr != nil {
+				// 文章内容已经查询成功，事件发送失败只记录日志，不改变本次详情响应。
+				as.l.Error("发送文章阅读事件失败",
+					logger.Int64("articleId", articleId),
+					logger.Int64("userId", uid),
+					logger.Error(produceErr),
+				)
 			}
 		}()
 	}

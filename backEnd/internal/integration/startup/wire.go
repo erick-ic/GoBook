@@ -3,7 +3,6 @@
 package startup
 
 import (
-	article3 "GoBook/internal/events/article"
 	"GoBook/internal/repository"
 	"GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
@@ -62,11 +61,8 @@ func InitWebServer() *gin.Engine {
 		cache.NewRedisInteractiveCache,
 		repository.NewInteractiveRepository,
 
-		//kafka
-		ioc.InitSaramaClient,
-		ioc.InitSyncProducer,
-		article3.NewKafkaProducer,
-		wire.Bind(new(article3.Producer), new(*article3.KafkaProducer)),
+		// 集成测试不验证 Kafka，注入无外部网络依赖的 Producer。
+		InitArticleProducer,
 		InitSMSService,
 		InitOAuth2WechatService,
 		NewOAuth2WechatConfig,
@@ -76,6 +72,7 @@ func InitWebServer() *gin.Engine {
 		web.NewUserHandler,
 		web.NewOAuth2WechatHandler,
 		web.NewArticleHandler,
+		web.NewObserverAbilityHandler,
 
 		//初始化gin、路由、中间件
 		ioc.InitGin,
@@ -98,10 +95,8 @@ func InitArticleHandler() *web.ArticleHandler {
 		cache.NewRedisInteractiveCache,
 		repository.NewInteractiveRepository,
 		web.NewArticleHandler,
-		ioc.InitSaramaClient,
-		ioc.InitSyncProducer,
-		article3.NewKafkaProducer,
-		wire.Bind(new(article3.Producer), new(*article3.KafkaProducer)),
+		// 编辑文章测试不验证阅读事件投递。
+		InitArticleProducer,
 	)
 	return &web.ArticleHandler{}
 }

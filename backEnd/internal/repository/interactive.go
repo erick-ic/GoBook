@@ -5,6 +5,7 @@ import (
 	"GoBook/internal/repository/cache"
 	"GoBook/internal/repository/dao"
 	"context"
+	"errors"
 
 	"github.com/ecodeclub/ekit/slice"
 )
@@ -16,6 +17,8 @@ import (
 //  1. 领域模型 ↔ DAO 实体的转换
 //  2. 数据库和缓存的协同（先写库，再更新缓存）
 //  3. 保证数据最终一致性（数据库优先，缓存按需更新）
+//
+//go:generate mockgen -source=./interactive.go -package=repomocks -destination=./mocks/interactive.mock.go InteractiveRepository
 type InteractiveRepository interface {
 	// IncrReadCnt 增加阅读数（先写库，再按需更新缓存）
 	IncrReadCnt(ctx context.Context, biz string, bizId int64) error
@@ -27,6 +30,10 @@ type InteractiveRepository interface {
 	DecrLike(ctx context.Context, biz string, id int64, uid int64) error
 	// Get 查询互动数据（阅读数/点赞数/收藏数）
 	Get(ctx context.Context, biz string, id int64) (domain.Interactive, error)
+	// Liked 查询指定用户是否已点赞。
+	Liked(ctx context.Context, biz string, id int64, uid int64) (bool, error)
+	// Collected 查询指定用户是否已收藏。
+	Collected(ctx context.Context, biz string, id int64, uid int64) (bool, error)
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error)
 	// AddCollectItem 保存用户收藏关系，并同步更新数据库和缓存中的收藏数。
 	AddCollectItem(ctx context.Context, biz string, id int64, cid int64, uid int64) error
@@ -41,12 +48,12 @@ type interactiveRepository struct {
 // AddCollectItem 协调收藏关系、聚合收藏数和缓存的更新。
 //
 // 执行顺序：
-//  1. DAO 在同一事务中写入用户收藏关系，并将 Interactive.collect_cnt 加 1。
-//  2. 数据库事务成功后，按 Cache-If-Present 策略更新已存在的 Redis 缓存。
+//  1. DAO 在同一事务中幂等写入用户收藏关系；仅首次收藏才将 Interactive.collect_cnt 加 1。
+//  2. 首次收藏事务成功后，按 Cache-If-Present 策略更新已存在的 Redis 缓存。
 //
 // Redis 更新失败不会回滚已经提交的数据库事务，因此数据库仍然是最终可信数据源。
 func (ir *interactiveRepository) AddCollectItem(ctx context.Context, biz string, id int64, cid int64, uid int64) error {
-	err := ir.dao.InsertCollectBiz(ctx, dao.UserCollectionBiz{
+	changed, err := ir.dao.InsertCollectBiz(ctx, dao.UserCollectionBiz{
 		Biz:   biz,
 		BizId: id,
 		Cid:   cid,
@@ -54,6 +61,10 @@ func (ir *interactiveRepository) AddCollectItem(ctx context.Context, biz string,
 	})
 	if err != nil {
 		return err
+	}
+	if !changed {
+		// 重复收藏没有改变数据库状态，缓存也不能重复加 1。
+		return nil
 	}
 
 	return ir.cache.IncrCollectCntIfPresent(ctx, biz, id)
@@ -75,10 +86,22 @@ func (ir *interactiveRepository) GetByIds(ctx context.Context, biz string, ids [
 func (ir *interactiveRepository) Get(ctx context.Context, biz string, id int64) (domain.Interactive, error) {
 	inter, err := ir.dao.Get(ctx, biz, id)
 	if err != nil {
+		if errors.Is(err, dao.ErrInteractiveNotFound) {
+			// 互动聚合记录按需创建；尚未产生互动时返回 0 计数，文章详情不应因此失败。
+			return domain.Interactive{Biz: biz, BizId: id}, nil
+		}
 		return domain.Interactive{}, err
 	}
 	res := ir.toDomain(inter)
 	return res, nil
+}
+
+func (ir *interactiveRepository) Liked(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
+	return ir.dao.Liked(ctx, biz, id, uid)
+}
+
+func (ir *interactiveRepository) Collected(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
+	return ir.dao.Collected(ctx, biz, id, uid)
 }
 
 // IncrLike 点赞
@@ -87,18 +110,26 @@ func (ir *interactiveRepository) Get(ctx context.Context, biz string, id int64) 
 //  2. 更新 Interactive 表的 like_cnt（原子递增）
 //  3. 缓存中 like_cnt +1（仅当缓存存在时才更新，避免缓存击穿）
 func (ir *interactiveRepository) IncrLike(ctx context.Context, biz string, id int64, uid int64) error {
-	err := ir.dao.InsertLikeInfo(ctx, biz, id, uid)
+	changed, err := ir.dao.InsertLikeInfo(ctx, biz, id, uid)
 	if err != nil {
 		return err
+	}
+	if !changed {
+		// 重复点赞没有改变数据库状态，缓存也不能重复加 1。
+		return nil
 	}
 	return ir.cache.IncrLikeCntIfPresent(ctx, biz, id)
 }
 
 // DecrLike 取消点赞
 func (ir *interactiveRepository) DecrLike(ctx context.Context, biz string, id int64, uid int64) error {
-	err := ir.dao.DeleteLikeInfo(ctx, biz, id, uid)
+	changed, err := ir.dao.DeleteLikeInfo(ctx, biz, id, uid)
 	if err != nil {
 		return err
+	}
+	if !changed {
+		// 重复取消没有改变数据库状态，缓存也不能重复减 1。
+		return nil
 	}
 	return ir.cache.DecrLikeCntIfPresent(ctx, biz, id)
 }
@@ -140,6 +171,7 @@ func NewInteractiveRepository(dao dao.InteractiveDAO, cache cache.InteractiveCac
 // toDomain 将DAO实体转换为领域模型
 func (ir *interactiveRepository) toDomain(ie dao.Interactive) domain.Interactive {
 	return domain.Interactive{
+		Biz:        ie.Biz,
 		BizId:      ie.BizId,
 		ReadCnt:    ie.ReadCnt,
 		LikeCnt:    ie.LikeCnt,

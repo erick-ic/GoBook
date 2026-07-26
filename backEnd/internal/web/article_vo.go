@@ -24,6 +24,9 @@ type ArticleWithdrawReq struct {
 
 type ArticleLikeReq struct {
 	Id int64 `json:"id"`
+	// Like 表示目标状态：true 为点赞，false 为取消点赞。
+	// 使用指针兼容旧客户端；字段缺失时仍按点赞处理。
+	Like *bool `json:"like"`
 }
 
 // ArticleCollectReq 是收藏文章的请求体。

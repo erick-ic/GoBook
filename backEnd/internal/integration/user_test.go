@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"GoBook/integration/startup"
+	"GoBook/internal/integration/startup"
 	"GoBook/internal/web"
 	"GoBook/ioc"
 	"bytes"

@@ -98,12 +98,18 @@ func (ah *ArticleHandler) Collect(ctx *gin.Context, req ArticleCollectReq, uc *i
 	}, nil
 }
 
-// Like 处理文章点赞请求
-// 调用 InteractiveService.Like 实现点赞/取消点赞的切换（幂等操作）
-// 调用链路：POST /pub/like/:id → Like → InteractiveService.Like → Repository（Redis+DB）
+// Like 按请求中的目标状态执行点赞或取消点赞。重复请求保持幂等，不会重复增减计数。
+// 调用链路：POST /pub/like → Like → InteractiveService.Like/CancelLike → Repository（DB + Redis）
 func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.UserClaims) (Result, error) {
-	// 调用互动服务，Like 方法内部判断是否已点赞，实现点赞/取消的切换
-	err := ah.interSvc.Like(ctx, ah.biz, req.Id, uc.Uid)
+	like := req.Like == nil || *req.Like
+	var err error
+	msg := "点赞成功～"
+	if like {
+		err = ah.interSvc.Like(ctx, ah.biz, req.Id, uc.Uid)
+	} else {
+		err = ah.interSvc.CancelLike(ctx, ah.biz, req.Id, uc.Uid)
+		msg = "取消点赞成功～"
+	}
 	if err != nil {
 		return Result{
 			Code: 5,
@@ -112,7 +118,7 @@ func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.Us
 	}
 	return Result{
 		Code: 0,
-		Msg:  "点赞成功～",
+		Msg:  msg,
 	}, nil
 }
 
@@ -122,11 +128,11 @@ func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.Us
 // 执行流程：
 //  1. 解析文章ID和用户身份
 //  2. 调用 GetByPubId 获取文章内容（同时异步发送阅读事件到Kafka）
-//  3. 调用 InteractiveService.Get 获取互动数据（阅读数/点赞数/收藏数）
+//  3. 调用 InteractiveService.Get 获取互动计数以及当前用户的点赞、收藏状态
 //  4. 组装 ArticleVO 返回给前端
 //
 // 阅读计数说明：
-//   - 不在此处同步递增阅读数（已废弃直接调用 InccrReadCnt 的方式）
+//   - 不在此处同步递增阅读数（已废弃直接调用 IncrReadCnt 的方式）
 //   - 改由 Service 层 GetByPubId 异步发送 Kafka 事件，消费者更新阅读数
 //   - 优点：响应快；缺点：本次返回的阅读数是旧值（最终一致）
 func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
@@ -152,19 +158,17 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 		})
 		ah.l.Warn("查询文章失败，系统错误！",
 			logger.Int64("articleId", articleId),
-			logger.Error(err),
 		)
 		return
 	}
 	claims, ok := c.(*ijwt.UserClaims)
-	if !ok {
+	if !ok || claims == nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
 			Msg:  "系统错误！",
 		})
 		ah.l.Warn("查询文章失败，claims 类型错误！",
-			logger.Int64("userId", claims.Uid),
-			logger.Error(err),
+			logger.Int64("articleId", articleId),
 		)
 		return
 	}
@@ -184,7 +188,7 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 	}
 
 	// 获取互动数据（阅读数/点赞数/收藏数/是否点赞/是否收藏）
-	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId)
+	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId, claims.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -205,6 +209,8 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 		ReadCnt:    iter.ReadCnt,
 		LikeCnt:    iter.LikeCnt,
 		CollectCnt: iter.CollectCnt,
+		Liked:      iter.Liked,
+		Collected:  iter.Collected,
 
 		Status: res.Status.ToUint8(),
 		Ctime:  res.Ctime.Format(time.DateTime),

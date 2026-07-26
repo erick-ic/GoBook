@@ -17,6 +17,8 @@ import (
 //  2. 模拟对应的互动数据（点赞数）
 //  3. 使用简单 scoreFunc（score=likeCnt）验证排序结果
 //  4. 期望结果：按点赞数降序取 Top3 → [Id4(400), Id3(300), Id2(200)]
+//
+//go:generate mockgen -source=interactive.go -package=svcmocks -destination=./mocks/interactive.mock.go
 func TestRankingTopN(t *testing.T) {
 	const batchSize = 2
 	now := time.Now()

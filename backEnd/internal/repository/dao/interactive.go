@@ -2,27 +2,43 @@ package dao
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
+var (
+	// ErrInteractiveNotFound 由仓储层识别，并转换成计数均为 0 的领域对象。
+	// 新文章尚未产生互动行为时没有聚合记录，这是正常状态而不是接口错误。
+	ErrInteractiveNotFound = gorm.ErrRecordNotFound
+	// ErrInvalidInteractiveBatch 表示批量阅读事件中的业务类型与业务 ID 无法一一对应。
+	ErrInvalidInteractiveBatch = errors.New("互动批量参数长度不一致")
+)
+
 // InteractiveDAO 互动数据访问对象接口，定义互动数据的数据库操作
+//
+//go:generate mockgen -source=./interactive.go -package=daomocks -destination=./mocks/interactive.mock.go InteractiveDAO
 type InteractiveDAO interface {
 	// IncrReadCnt 增加阅读数（Upsert + 原子递增）
 	IncrReadCnt(ctx context.Context, biz string, bizId int64) error
-	// InsertLikeInfo 点赞（事务内写入点赞记录 + 更新点赞数）
-	InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) error
-	// DeleteLikeInfo 取消点赞（预留接口，尚未实现）
-	DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) error
+	// InsertLikeInfo 点赞；changed 仅在点赞状态从未点赞变为已点赞时为 true。
+	InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) (changed bool, err error)
+	// DeleteLikeInfo 取消点赞；changed 仅在点赞状态从已点赞变为未点赞时为 true。
+	DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) (changed bool, err error)
 	// Get 查询互动数据
 	Get(ctx context.Context, biz string, id int64) (Interactive, error)
+	// Liked 查询指定用户当前是否已点赞。
+	Liked(ctx context.Context, biz string, id int64, uid int64) (bool, error)
+	// Collected 查询指定用户是否已收藏。
+	Collected(ctx context.Context, biz string, id int64, uid int64) (bool, error)
 	// BatchIncrReadCnt 批量增加阅读数（事务内循环执行）
 	BatchIncrReadCnt(ctx context.Context, bizs []string, ids []int64) error
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error)
-	// InsertCollectBiz 在事务内保存用户收藏关系并增加业务对象的聚合收藏数。
-	InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) error
+	// InsertCollectBiz 在事务内保存收藏关系；changed 仅在首次收藏时为 true。
+	InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) (changed bool, err error)
 }
 
 type interactiveDAO struct {
@@ -33,19 +49,24 @@ type interactiveDAO struct {
 //  1. 向 UserCollectionBiz 写入“用户—业务对象—收藏夹”的明细关系。
 //  2. Upsert Interactive；记录已存在时 collect_cnt 原子加 1，否则以 1 创建。
 //
-// UserCollectionBiz 上的联合唯一索引会阻止同一用户重复收藏同一个业务对象；
-// 当前实现遇到重复收藏时会直接返回唯一键冲突错误，不会重复增加收藏数。
-func (idao *interactiveDAO) InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) error {
+// UserCollectionBiz 上的联合唯一索引会阻止同一用户重复收藏同一个业务对象。
+// 重复收藏按幂等成功处理，既不返回唯一键错误，也不会重复增加聚合收藏数。
+func (idao *interactiveDAO) InsertCollectBiz(ctx context.Context, cb UserCollectionBiz) (bool, error) {
 	now := time.Now().UnixMilli()
 	cb.Utime = now
 	cb.Ctime = now
-	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 先保存用户收藏明细；失败时终止事务，聚合收藏数不会变化。
-		err := tx.Create(&cb).Error
-		if err != nil {
-			return err
+	changed := false
+	err := idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 联合唯一索引负责并发防重；唯一键冲突时 DoNothing 返回 RowsAffected=0。
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&cb)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
 		}
 
+		changed = true
 		// 再按 biz + biz_id 更新聚合数据，供文章详情等读接口统一查询。
 		return tx.WithContext(ctx).Clauses(clause.OnConflict{
 			DoUpdates: clause.Assignments(map[string]interface{}{
@@ -60,6 +81,10 @@ func (idao *interactiveDAO) InsertCollectBiz(ctx context.Context, cb UserCollect
 			Utime:      now,
 		}).Error
 	})
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
 }
 
 func (idao *interactiveDAO) GetByIds(ctx context.Context, biz string, ids []int64) ([]Interactive, error) {
@@ -75,12 +100,16 @@ func (idao *interactiveDAO) GetByIds(ctx context.Context, biz string, ids []int6
 //  1. 批量消费开启一个事务，磁盘操作只执行一次（事务提交时才刷盘）
 //  2. 刷新 redolog、undolog、binlog 到磁盘的次数远少于单次消费
 func (idao *interactiveDAO) BatchIncrReadCnt(ctx context.Context, bizs []string, ids []int64) error {
+	if len(bizs) != len(ids) {
+		return fmt.Errorf("%w: bizs=%d, ids=%d", ErrInvalidInteractiveBatch, len(bizs), len(ids))
+	}
 	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		txDAO := NewInteractiveDAO(tx)
 		for i := range bizs {
 			err := txDAO.IncrReadCnt(ctx, bizs[i], ids[i])
 			if err != nil {
-				//记入日志
+				// 任意一条更新失败都必须返回错误，让整个批次回滚，避免部分提交后仍确认消息。
+				return err
 			}
 		}
 		return nil
@@ -97,55 +126,72 @@ func (idao *interactiveDAO) Get(ctx context.Context, biz string, id int64) (Inte
 	return inter, err
 }
 
-// DeleteLikeInfo 取消点赞（预留接口，尚未实现）
-func (idao *interactiveDAO) DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) error {
+// Liked 查询有效的点赞关系。唯一索引保证结果最多一条，Count 不会把“未点赞”当成错误。
+func (idao *interactiveDAO) Liked(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
+	var cnt int64
+	err := idao.db.WithContext(ctx).
+		Model(&UserLikeBiz{}).
+		Where("uid = ? AND biz_id = ? AND biz = ? AND status = ?", uid, id, biz, 1).
+		Count(&cnt).Error
+	return cnt > 0, err
+}
+
+// Collected 查询收藏关系是否存在。当前收藏关系没有软删除状态，存在记录即表示已收藏。
+func (idao *interactiveDAO) Collected(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
+	var cnt int64
+	err := idao.db.WithContext(ctx).
+		Model(&UserCollectionBiz{}).
+		Where("uid = ? AND biz_id = ? AND biz = ?", uid, id, biz).
+		Count(&cnt).Error
+	return cnt > 0, err
+}
+
+// DeleteLikeInfo 仅把有效点赞切换为已取消，并在状态确实变化时递减聚合计数。
+// 重复取消或从未点赞都直接返回 changed=false，避免数据库和 Redis 计数被重复扣减。
+func (idao *interactiveDAO) DeleteLikeInfo(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
 	now := time.Now().UnixMilli()
-	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Model(&UserLikeBiz{}).
-			Where("uid=? AND biz_id = ? AND biz=?", uid, id, biz).
+	changed := false
+	err := idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&UserLikeBiz{}).
+			Where("uid = ? AND biz_id = ? AND biz = ? AND status = ?", uid, id, biz, 1).
 			Updates(map[string]interface{}{
 				"utime":  now,
 				"status": 0,
-			}).Error
-		if err != nil {
-			return err
+			})
+		if res.Error != nil {
+			return res.Error
 		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+
+		changed = true
 		return tx.Model(&Interactive{}).
-			Where("biz =? AND biz_id=?", biz, id).
+			Where("biz = ? AND biz_id = ?", biz, id).
 			Updates(map[string]interface{}{
-				"like_cnt": gorm.Expr("`like_cnt` - 1"),
+				// 数据异常时也不允许计数降为负数。
+				"like_cnt": gorm.Expr("GREATEST(`like_cnt` - 1, 0)"),
 				"utime":    now,
 			}).Error
 	})
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
 }
 
 // InsertLikeInfo 点赞
-// 在一个事务内完成两步操作，保证数据一致性：
-//  1. 写入 UserLikeBiz 表（记录用户的点赞行为）
-//     - 使用 OnConflict 实现幂等：重复点赞只更新 utime 和 status，不会插入新记录
-//  2. 更新 Interactive 表的 like_cnt（原子递增）
-//     - 使用 OnConflict + gorm.Expr 实现：存在则 like_cnt+1，不存在则插入 like_cnt=1
+// 在事务内先执行幂等插入；唯一索引冲突时，再尝试把 status=0 的旧记录恢复为 1。
+// 只有“首次插入成功”或“恢复成功”才增加聚合计数并返回 changed=true。
 //
-// 防重复点赞原理：
-//   - 通过 RowsAffected 判断是 INSERT 还是 UPDATE
-//   - RowsAffected=1：新插入记录（首次点赞），like_cnt +1
-//   - RowsAffected=0：触发 ON CONFLICT UPDATE（已点赞过），不增加 like_cnt
-//   - 配合 UserLikeBiz.status 字段，支持"取消点赞后再点赞"的场景
-func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) error {
+// 这种写法不再把 MySQL 的 ON DUPLICATE KEY UPDATE RowsAffected=2 误判为首次点赞，
+// 因而同时覆盖首次点赞、重复点赞、取消后重新点赞以及并发重复请求。
+func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
 	now := time.Now().UnixMilli()
-	return idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 步骤1：写入用户点赞记录（幂等，通过唯一索引 uid_biz_type_id 防重）
-		// ON DUPLICATE KEY UPDATE 时，RowsAffected 的取值：
-		//   - 1：新插入记录（INSERT）
-		//   - 2：更新了记录（UPDATE，MySQL 把 INSERT 算作 0 行，UPDATE 算作 2 行）
-		//   - 0：触发 ON CONFLICT 但字段值没变化（MySQL 特殊行为）
-		// 这里用 ==1 判断是否为真正的新插入
-		res := tx.Clauses(clause.OnConflict{
-			DoUpdates: clause.Assignments(map[string]interface{}{
-				"utime":  now,
-				"status": 1, // 1=有效，0=已取消
-			}),
-		}).Create(&UserLikeBiz{
+	changed := false
+	err := idao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先尝试首次插入；并发重复请求由联合唯一索引收敛为一次成功插入。
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&UserLikeBiz{
 			Uid:    uid,
 			Biz:    biz,
 			BizId:  id,
@@ -157,14 +203,26 @@ func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id i
 			return res.Error
 		}
 
-		// 只有新插入（首次点赞）才更新互动表的点赞数
-		// 重复点赞（RowsAffected != 1）不增加 like_cnt，避免点赞数虚增
-		if res.RowsAffected != 1 {
+		stateChanged := res.RowsAffected == 1
+		if !stateChanged {
+			// 唯一键已存在时只恢复 status=0 的记录；有效点赞不会被重复更新。
+			res = tx.Model(&UserLikeBiz{}).
+				Where("uid = ? AND biz_id = ? AND biz = ? AND status = ?", uid, id, biz, 0).
+				Updates(map[string]interface{}{
+					"status": 1,
+					"utime":  now,
+				})
+			if res.Error != nil {
+				return res.Error
+			}
+			stateChanged = res.RowsAffected == 1
+		}
+
+		if !stateChanged {
 			return nil
 		}
 
-		// 步骤2：更新互动表的点赞数（原子递增）
-		// gorm.Expr("`like_cnt` + 1") 等价于 SQL: like_cnt = like_cnt + 1
+		changed = true
 		return tx.Clauses(clause.OnConflict{
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"like_cnt": gorm.Expr("`like_cnt` + 1"),
@@ -178,6 +236,10 @@ func (idao *interactiveDAO) InsertLikeInfo(ctx context.Context, biz string, id i
 			Utime:   now,
 		}).Error
 	})
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
 }
 
 // IncrReadCnt 增加阅读数

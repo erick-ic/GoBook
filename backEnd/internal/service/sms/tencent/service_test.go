@@ -11,13 +11,18 @@ import (
 	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
 )
 
-// 这个需要手动跑，也就是你需要在本地搞好这些环境变量
+// TestSender 会调用腾讯云并真实发送短信，因此默认跳过。
+// 手动验证时需显式设置 RUN_TENCENT_SMS_TEST=1、腾讯云密钥和接收手机号。
 func TestSender(t *testing.T) {
-	secretId, ok := os.LookupEnv("SMS_SECRET_ID")
-	if !ok {
-		t.Fatal()
+	if os.Getenv("RUN_TENCENT_SMS_TEST") != "1" {
+		t.Skip("手动短信集成测试未开启")
 	}
-	secretKey, ok := os.LookupEnv("SMS_SECRET_KEY")
+	secretId, secretIDOK := os.LookupEnv("SMS_SECRET_ID")
+	secretKey, secretKeyOK := os.LookupEnv("SMS_SECRET_KEY")
+	phoneNumber, phoneOK := os.LookupEnv("SMS_PHONE_NUMBER")
+	if !secretIDOK || !secretKeyOK || !phoneOK {
+		t.Fatal("请设置 SMS_SECRET_ID、SMS_SECRET_KEY 和 SMS_PHONE_NUMBER")
+	}
 
 	c, err := sms.NewClient(common.NewCredential(secretId, secretKey),
 		"ap-nanjing",
@@ -36,11 +41,10 @@ func TestSender(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:   "发送验证码",
-			tplId:  "1877556",
-			params: []string{"123456"},
-			// 改成你的手机号码
-			numbers: []string{""},
+			name:    "发送验证码",
+			tplId:   "1877556",
+			params:  []string{"123456"},
+			numbers: []string{phoneNumber},
 		},
 	}
 	for _, tc := range testCases {

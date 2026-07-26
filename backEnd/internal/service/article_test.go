@@ -18,6 +18,9 @@ import (
 // mockgen -source=internal/repository/article/article_reader.go -package=articlerepomocks -destination=internal/repository/article/mocks/article_reader.mock.go
 
 //go:generate mockgen -source=../repository/article/article.go -package=articlerepomocks -destination=../repository/article/mocks/article.mock.go
+//go:generate mockgen -source=../repository/article/article_author.go -package=articlerepomocks -destination=../repository/article/mocks/article_author.mock.go
+//go:generate mockgen -source=../repository/article/article_reader.go -package=articlerepomocks -destination=../repository/article/mocks/article_reader.mock.go
+
 func Test_articleService_Publish(t *testing.T) {
 	//now := time.Now()
 	testCases := []struct {

@@ -20,6 +20,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+//go:generate mockgen -source=../service/article.go -package=svcmocks -destination=../service/mocks/article.mock.go
 func TestArticleHandler_Publish(t *testing.T) {
 	testCases := []struct {
 		name string
