@@ -25,7 +25,9 @@ frontEnd/.env*.local
 *.key
 
 # ========== Mock ==========
+*.mock.go
 wire_gen.go
 
-# 集成测试依赖这些 Wire 生成函数，提交产物以保证拉取后可直接运行测试。
-!backEnd/internal/integration/startup/wire_gen.go
+# 互动微服务是独立可执行程序，提交 Wire 生成结果以保证拉取后可直接构建。
+!backEnd/interactive/wire_gen.go
+!backEnd/interactive/integration/startup/wire_gen.go

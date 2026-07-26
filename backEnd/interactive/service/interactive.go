@@ -1,8 +1,8 @@
 package service
 
 import (
-	"GoBook/internal/domain"
-	"GoBook/internal/repository"
+	"GoBook/interactive/domain"
+	"GoBook/interactive/repository"
 	"context"
 
 	"golang.org/x/sync/errgroup"
@@ -23,7 +23,7 @@ type InteractiveService interface {
 	Like(ctx context.Context, biz string, articleId int64, uid int64) error
 	// CancelLike 取消点赞
 	CancelLike(ctx context.Context, biz string, articleId int64, uid int64) error
-	// Get 获取互动计数以及当前用户的点赞、收藏状态。
+	// Get 获取互动数据以及指定用户的点赞、收藏状态。
 	Get(ctx context.Context, biz string, id int64, uid int64) (domain.Interactive, error)
 	// GetByIds 批量获取互动数据（用于排行榜计算）
 	GetByIds(ctx context.Context, biz string, ids []int64) (map[int64]domain.Interactive, error)
@@ -63,32 +63,28 @@ func (is *interactiveService) GetByIds(ctx context.Context, biz string, ids []in
 	return res, nil
 }
 
-// Get 获取互动计数以及当前用户的点赞、收藏状态。
-// 调用链路：PubDetail Handler → Get → Repository.Get → DAO.Get
-// 三个查询彼此独立，并发执行可避免串行增加文章详情接口的延迟。
+// Get 先获取聚合计数，再并发查询当前用户的点赞与收藏状态。
+// 聚合数据当前直接读取数据库，用户态查询相互独立，可并行执行。
 func (is *interactiveService) Get(ctx context.Context, biz string, id int64, uid int64) (domain.Interactive, error) {
-	var (
-		inter     domain.Interactive
-		liked     bool
-		collected bool
-	)
-	group, queryCtx := errgroup.WithContext(ctx)
-	group.Go(func() error {
-		var err error
-		inter, err = is.repo.Get(queryCtx, biz, id)
-		return err
+	inter, err := is.repo.Get(ctx, biz, id)
+	if err != nil {
+		return domain.Interactive{}, err
+	}
+
+	var liked, collected bool
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var queryErr error
+		liked, queryErr = is.repo.Liked(egCtx, biz, id, uid)
+		return queryErr
 	})
-	group.Go(func() error {
-		var err error
-		liked, err = is.repo.Liked(queryCtx, biz, id, uid)
-		return err
+
+	eg.Go(func() error {
+		var queryErr error
+		collected, queryErr = is.repo.Collected(egCtx, biz, id, uid)
+		return queryErr
 	})
-	group.Go(func() error {
-		var err error
-		collected, err = is.repo.Collected(queryCtx, biz, id, uid)
-		return err
-	})
-	if err := group.Wait(); err != nil {
+	if err = eg.Wait(); err != nil {
 		return domain.Interactive{}, err
 	}
 
@@ -99,7 +95,7 @@ func (is *interactiveService) Get(ctx context.Context, biz string, id int64, uid
 
 // Like 点赞
 // 调用链路：Like Handler → Like → Repository.IncrLike → DAO.InsertLikeInfo + Cache.IncrLikeCntIfPresent
-// 实现幂等：通过 UserLikeBiz 表的唯一索引和状态条件更新，确保重复点赞不计数
+// 实现幂等：通过 UserLikeBiz 表的唯一索引 + OnConflict 实现重复点赞不计数
 func (is *interactiveService) Like(ctx context.Context, biz string, articleId int64, uid int64) error {
 	return is.repo.IncrLike(ctx, biz, articleId, uid)
 }

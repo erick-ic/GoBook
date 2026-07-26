@@ -3,6 +3,11 @@
 package main
 
 import (
+	"GoBook/interactive/events"
+	repository2 "GoBook/interactive/repository"
+	cache2 "GoBook/interactive/repository/cache"
+	dao2 "GoBook/interactive/repository/dao"
+	service2 "GoBook/interactive/service"
 	"GoBook/internal/events/article"
 	"GoBook/internal/repository"
 	articleRepo "GoBook/internal/repository/article"
@@ -53,30 +58,33 @@ func InitApp() *App {
 		//单次
 		//article.NewInteractiveReadEventConsumer,
 		//批量
-		article.NewInteractiveReadEventBatchConsumer,
+		events.NewInteractiveReadEventBatchConsumer,
+
+		// 同时装配本地实现和远程 gRPC，通过配置阈值灰度切流。
+		ioc.InitInteractiveGRPCClient,
 
 		//初始化DAO，缓存
 		dao.NewUserDAO,
-		dao.NewInteractiveDAO,
+		dao2.NewInteractiveDAO,
 		article2.NewArticleDAO,
 		article2.NewAuthorDAO,
 		article2.NewReaderDAO,
 		cache.NewUserCache,
 		cache.NewCodeCache,
 		cache.NewRedisArticleCache,
-		cache.NewRedisInteractiveCache,
+		cache2.NewRedisInteractiveCache,
 
 		//初始化repo
 		repository.NewUserRepository,
 		repository.NewCodeRepository,
-		repository.NewInteractiveRepository,
+		repository2.NewInteractiveRepository,
 		articleRepo.NewArticleRepository,
 
 		//初始化service
 		service.NewUserService,
 		service.NewCodeService,
 		service.NewArticleService,
-		service.NewInteractiveService,
+		service2.NewInteractiveService,
 		ioc.InitSMSService,
 		ioc.InitOAuth2WechatService,
 		ioc.NewOAuth2WechatConfig,

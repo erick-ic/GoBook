@@ -1,7 +1,8 @@
-package article
+package events
 
 import (
-	"GoBook/internal/repository"
+	"GoBook/interactive/repository"
+	"GoBook/internal/events/article"
 	"GoBook/pkg/logger"
 	"GoBook/pkg/saramax"
 	"context"
@@ -33,8 +34,8 @@ func (i *InteractiveReadEventBatchConsumer) Start() error {
 	}
 	go func() {
 		er := cg.Consume(context.Background(),
-			[]string{TopicReadEvent},
-			saramax.NewBatchHandler[ReadEvent](i.l, i.Consume, 10, time.Second))
+			[]string{article.TopicReadEvent},
+			saramax.NewBatchHandler[article.ReadEvent](i.l, i.Consume, 10, time.Second))
 		if er != nil {
 			i.l.Error("退出消费", logger.Error(er))
 		}
@@ -44,7 +45,7 @@ func (i *InteractiveReadEventBatchConsumer) Start() error {
 
 func (i *InteractiveReadEventBatchConsumer) Consume(
 	msgs []*sarama.ConsumerMessage,
-	ts []ReadEvent,
+	ts []article.ReadEvent,
 ) error {
 	bizs := make([]string, 0, len(msgs))
 	ids := make([]int64, 0, len(ts))

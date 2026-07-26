@@ -1,6 +1,7 @@
 package service
 
 import (
+	interactivev1 "GoBook/api/proto/gen/interactive/v1"
 	"GoBook/internal/domain"
 	svcmocks "GoBook/internal/service/mocks"
 	"context"
@@ -10,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
+
+//go:generate mockgen -source=../../api/proto/gen/interactive/v1/interactive_grpc.pb.go -package=svcmocks -destination=./mocks/interactive.mock.go
 
 // TestRankingTopN 测试排行榜 TopN 计算
 // 验证"分批取数 + 优先队列"的流式算法是否正确：
@@ -25,13 +28,13 @@ func TestRankingTopN(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mock           func(ctrl *gomock.Controller) (ArticleService, InteractiveService)
+		mock           func(ctrl *gomock.Controller) (ArticleService, interactivev1.InteractiveServiceClient)
 		expectErr      error
 		expectArticles []domain.Article
 	}{
 		{
 			name: "计算成功",
-			mock: func(ctrl *gomock.Controller) (ArticleService, InteractiveService) {
+			mock: func(ctrl *gomock.Controller) (ArticleService, interactivev1.InteractiveServiceClient) {
 				artSvc := svcmocks.NewMockArticleService(ctrl)
 
 				// 模拟第1批：offset=0, limit=2 → [Id:1, Id:2]
@@ -50,22 +53,34 @@ func TestRankingTopN(t *testing.T) {
 				artSvc.EXPECT().ListPublishedArticles(gomock.Any(), gomock.Any(), 4, batchSize).
 					Return([]domain.Article{}, nil)
 
-				interSvc := svcmocks.NewMockInteractiveService(ctrl)
+				interSvc := svcmocks.NewMockInteractiveServiceClient(ctrl)
 				// 第1批互动数据：Id1(100赞), Id2(200赞)
-				interSvc.EXPECT().GetByIds(gomock.Any(), "article", []int64{1, 2}).
-					Return(map[int64]domain.Interactive{
+				interSvc.EXPECT().GetByIds(gomock.Any(), &interactivev1.GetByIdsRequest{
+					Biz: "article",
+					Ids: []int64{1, 2},
+				}).Return(&interactivev1.GetByIdsResponse{
+					Inters: map[int64]*interactivev1.Interactive{
 						1: {BizId: 1, LikeCnt: 100},
 						2: {BizId: 2, LikeCnt: 200},
-					}, nil)
+					},
+				}, nil)
 				// 第2批互动数据：Id3(300赞), Id4(400赞)
-				interSvc.EXPECT().GetByIds(gomock.Any(), "article", []int64{3, 4}).
-					Return(map[int64]domain.Interactive{
+				interSvc.EXPECT().GetByIds(gomock.Any(), &interactivev1.GetByIdsRequest{
+					Biz: "article",
+					Ids: []int64{3, 4},
+				}).Return(&interactivev1.GetByIdsResponse{
+					Inters: map[int64]*interactivev1.Interactive{
 						3: {BizId: 3, LikeCnt: 300},
 						4: {BizId: 4, LikeCnt: 400},
-					}, nil)
+					},
+				}, nil)
 				// 第3批互动数据：空ID列表，返回空map
-				interSvc.EXPECT().GetByIds(gomock.Any(), "article", []int64{}).
-					Return(map[int64]domain.Interactive{}, nil)
+				interSvc.EXPECT().GetByIds(gomock.Any(), &interactivev1.GetByIdsRequest{
+					Biz: "article",
+					Ids: []int64{},
+				}).Return(&interactivev1.GetByIdsResponse{
+					Inters: map[int64]*interactivev1.Interactive{},
+				}, nil)
 
 				return artSvc, interSvc
 			},

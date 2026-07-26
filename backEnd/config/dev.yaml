@@ -6,3 +6,13 @@ redis:
 
 kafka:
   addr: "localhost:9094"
+
+grpc:
+  client:
+    interactive:
+      # 互动微服务的 gRPC 地址；远程流量大于 0 时必须保证该服务可访问。
+      addr: "localhost:8090"
+      # 本地开发暂不启用 TLS，生产环境需要配置服务端证书和客户端凭证。
+      secure: false
+      # 远程调用比例，范围为 0～100；0 全走本地，100 全走远程。
+      threshold: 100

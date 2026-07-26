@@ -16,9 +16,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// mockgen -source=internal/repository/dao/user.go -package=daomocks -destination=internal/repository/dao/mocks/user.mock.go
-// mockgen -source=internal/repository/cache/user.go -package=cachemocks -destination=internal/repository/cache/mocks/user.mock.go
-
 //go:generate mockgen -source=../repository/dao/user.go -package=daomocks -destination=../repository/dao/mocks/user.mock.go
 //go:generate mockgen -source=../repository/cache/user.go -package=cachemocks -destination=../repository/cache/mocks/user.mock.go
 func TestCacheUserRepository_FindById(t *testing.T) {

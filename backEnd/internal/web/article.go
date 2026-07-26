@@ -1,6 +1,7 @@
 package web
 
 import (
+	interactivev1 "GoBook/api/proto/gen/interactive/v1"
 	"GoBook/internal/domain"
 	"GoBook/internal/service"
 	ijwt "GoBook/internal/web/jwt"
@@ -17,10 +18,10 @@ import (
 // ArticleHandler 文章处理器，处理文章相关的HTTP请求
 // 调用链路：HTTP请求 → ArticleHandler → ArticleService → ArticleRepository → ArticleDAO
 type ArticleHandler struct {
-	svc      service.ArticleService     // 文章服务接口，处理文章核心业务
-	interSvc service.InteractiveService // 互动服务接口，处理点赞/收藏/阅读数
-	l        logger.LoggerV1            // 日志记录器
-	biz      string                     // 业务标识，用于互动服务区分业务类型（"article"）
+	svc      service.ArticleService                 // 文章服务接口，处理文章核心业务
+	interSvc interactivev1.InteractiveServiceClient // 互动客户端，由灰度路由决定走本地还是远程 gRPC
+	l        logger.LoggerV1                        // 日志记录器
+	biz      string                                 // 业务标识，用于互动服务区分业务类型（"article"）
 }
 
 // NewArticleHandler 创建文章处理器实例
@@ -28,7 +29,7 @@ type ArticleHandler struct {
 func NewArticleHandler(
 	svc service.ArticleService,
 	l logger.LoggerV1,
-	interSvc service.InteractiveService,
+	interSvc interactivev1.InteractiveServiceClient,
 ) *ArticleHandler {
 	return &ArticleHandler{
 		svc:      svc,
@@ -76,16 +77,18 @@ func (ah *ArticleHandler) RegisterRouters(server *gin.Engine) {
 }
 
 // Collect 处理文章收藏请求。
-// 调用链路：POST /pub/collect → InteractiveService.Collect → Repository.AddCollectItem → DAO + Redis。
+// 调用链路：POST /pub/collect → 灰度客户端 → 本地适配器或远程 gRPC → InteractiveService。
 //
 // 参数含义：
 //   - req.Id：被收藏的文章 ID，也是互动数据中的 biz_id
 //   - req.Cid：用户选择的收藏夹 ID
 //   - uc.Uid：执行收藏操作的用户 ID，由 JWT claims 提供
 //
-// Handler 只负责转发请求和包装响应；收藏关系落库、收藏数递增及缓存更新由互动模块完成。
+// Handler 只负责构造 RPC 请求和包装响应；收藏关系落库、收藏数递增及缓存更新由互动服务完成。
 func (ah *ArticleHandler) Collect(ctx *gin.Context, req ArticleCollectReq, uc *ijwt.UserClaims) (Result, error) {
-	err := ah.interSvc.Collect(ctx, ah.biz, req.Id, req.Cid, uc.Uid)
+	_, err := ah.interSvc.Collect(ctx, &interactivev1.CollectRequest{
+		Biz: ah.biz, BizId: req.Id, Cid: req.Cid, Uid: uc.Uid,
+	})
 	if err != nil {
 		return Result{
 			Code: 5,
@@ -98,18 +101,14 @@ func (ah *ArticleHandler) Collect(ctx *gin.Context, req ArticleCollectReq, uc *i
 	}, nil
 }
 
-// Like 按请求中的目标状态执行点赞或取消点赞。重复请求保持幂等，不会重复增减计数。
-// 调用链路：POST /pub/like → Like → InteractiveService.Like/CancelLike → Repository（DB + Redis）
+// Like 处理文章点赞请求。
+// 调用链路：POST /pub/like → 灰度客户端 → 本地适配器或远程 gRPC → InteractiveService.Like。
 func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.UserClaims) (Result, error) {
-	like := req.Like == nil || *req.Like
-	var err error
-	msg := "点赞成功～"
-	if like {
-		err = ah.interSvc.Like(ctx, ah.biz, req.Id, uc.Uid)
-	} else {
-		err = ah.interSvc.CancelLike(ctx, ah.biz, req.Id, uc.Uid)
-		msg = "取消点赞成功～"
-	}
+	_, err := ah.interSvc.Like(ctx, &interactivev1.LikeRequest{
+		Biz:   ah.biz,
+		BizId: req.Id,
+		Uid:   uc.Uid,
+	})
 	if err != nil {
 		return Result{
 			Code: 5,
@@ -118,7 +117,7 @@ func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.Us
 	}
 	return Result{
 		Code: 0,
-		Msg:  msg,
+		Msg:  "点赞成功～",
 	}, nil
 }
 
@@ -128,11 +127,11 @@ func (ah *ArticleHandler) Like(ctx *gin.Context, req ArticleLikeReq, uc *ijwt.Us
 // 执行流程：
 //  1. 解析文章ID和用户身份
 //  2. 调用 GetByPubId 获取文章内容（同时异步发送阅读事件到Kafka）
-//  3. 调用 InteractiveService.Get 获取互动计数以及当前用户的点赞、收藏状态
+//  3. 通过灰度客户端调用 Get，查询互动计数和当前用户状态
 //  4. 组装 ArticleVO 返回给前端
 //
 // 阅读计数说明：
-//   - 不在此处同步递增阅读数（已废弃直接调用 IncrReadCnt 的方式）
+//   - 不在此处同步递增阅读数（已废弃直接调用 InccrReadCnt 的方式）
 //   - 改由 Service 层 GetByPubId 异步发送 Kafka 事件，消费者更新阅读数
 //   - 优点：响应快；缺点：本次返回的阅读数是旧值（最终一致）
 func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
@@ -158,17 +157,19 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 		})
 		ah.l.Warn("查询文章失败，系统错误！",
 			logger.Int64("articleId", articleId),
+			logger.Error(err),
 		)
 		return
 	}
 	claims, ok := c.(*ijwt.UserClaims)
-	if !ok || claims == nil {
+	if !ok {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
 			Msg:  "系统错误！",
 		})
 		ah.l.Warn("查询文章失败，claims 类型错误！",
-			logger.Int64("articleId", articleId),
+			logger.Int64("userId", claims.Uid),
+			logger.Error(err),
 		)
 		return
 	}
@@ -188,7 +189,11 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 	}
 
 	// 获取互动数据（阅读数/点赞数/收藏数/是否点赞/是否收藏）
-	iter, err := ah.interSvc.Get(ctx, ah.biz, articleId, claims.Uid)
+	iter, err := ah.interSvc.Get(ctx, &interactivev1.GetRequest{
+		Biz:   ah.biz,
+		BizId: res.Id,
+		Uid:   claims.Uid,
+	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, Result{
 			Code: 5,
@@ -206,11 +211,11 @@ func (ah *ArticleHandler) PublishArticleDetail(ctx *gin.Context) {
 		Id:         res.Id,
 		Title:      res.Title,
 		Content:    res.Content,
-		ReadCnt:    iter.ReadCnt,
-		LikeCnt:    iter.LikeCnt,
-		CollectCnt: iter.CollectCnt,
-		Liked:      iter.Liked,
-		Collected:  iter.Collected,
+		ReadCnt:    iter.Inter.GetReadCnt(),
+		LikeCnt:    iter.Inter.GetLikeCnt(),
+		CollectCnt: iter.Inter.GetCollectCnt(),
+		Liked:      iter.Inter.GetLiked(),
+		Collected:  iter.Inter.GetCollected(),
 
 		Status: res.Status.ToUint8(),
 		Ctime:  res.Ctime.Format(time.DateTime),
