@@ -7,6 +7,11 @@
 package startup
 
 import (
+	"GoBook/api/proto/gen/interactive/v1"
+	repository2 "GoBook/interactive/repository"
+	cache2 "GoBook/interactive/repository/cache"
+	dao2 "GoBook/interactive/repository/dao"
+	service2 "GoBook/interactive/service"
 	"GoBook/internal/repository"
 	article2 "GoBook/internal/repository/article"
 	"GoBook/internal/repository/cache"
@@ -14,6 +19,7 @@ import (
 	"GoBook/internal/repository/dao/article"
 	"GoBook/internal/service"
 	"GoBook/internal/web"
+	"GoBook/internal/web/client"
 	"GoBook/ioc"
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
@@ -45,12 +51,13 @@ func InitWebServer() *gin.Engine {
 	articleCache := cache.NewRedisArticleCache(cmdable)
 	articleRepository := article2.NewArticleRepository(articleDAO, authorDAO, readerDAO, articleCache, loggerV1)
 	producer := InitArticleProducer()
-	articleService := service.NewArticleService(articleRepository, producer, loggerV1)
-	interactiveDAO := dao.NewInteractiveDAO(db)
-	interactiveCache := cache.NewRedisInteractiveCache(cmdable)
-	interactiveRepository := repository.NewInteractiveRepository(interactiveDAO, interactiveCache)
-	interactiveService := service.NewInteractiveService(interactiveRepository)
-	articleHandler := web.NewArticleHandler(articleService, loggerV1, interactiveService)
+	articleService := service.NewArticleService(articleRepository, producer)
+	interactiveDAO := dao2.NewInteractiveDAO(db)
+	interactiveCache := cache2.NewRedisInteractiveCache(cmdable)
+	interactiveRepository := repository2.NewInteractiveRepository(interactiveDAO, interactiveCache)
+	interactiveService := service2.NewInteractiveService(interactiveRepository)
+	interactiveServiceAdapter := client.NewInteractiveServiceAdapter(interactiveService)
+	articleHandler := web.NewArticleHandler(articleService, loggerV1, interactiveServiceAdapter)
 	observerAbilityHandler := web.NewObserverAbilityHandler()
 	engine := ioc.InitGin(v, userHandler, oAuth2WechatHandler, articleHandler, observerAbilityHandler)
 	return engine
@@ -66,17 +73,29 @@ func InitArticleHandler() *web.ArticleHandler {
 	loggerV1 := InitLogger()
 	articleRepository := article2.NewArticleRepository(articleDAO, authorDAO, readerDAO, articleCache, loggerV1)
 	producer := InitArticleProducer()
-	articleService := service.NewArticleService(articleRepository, producer, loggerV1)
-	interactiveDAO := dao.NewInteractiveDAO(db)
-	interactiveCache := cache.NewRedisInteractiveCache(cmdable)
-	interactiveRepository := repository.NewInteractiveRepository(interactiveDAO, interactiveCache)
-	interactiveService := service.NewInteractiveService(interactiveRepository)
-	articleHandler := web.NewArticleHandler(articleService, loggerV1, interactiveService)
+	articleService := service.NewArticleService(articleRepository, producer)
+	interactiveDAO := dao2.NewInteractiveDAO(db)
+	interactiveCache := cache2.NewRedisInteractiveCache(cmdable)
+	interactiveRepository := repository2.NewInteractiveRepository(interactiveDAO, interactiveCache)
+	interactiveService := service2.NewInteractiveService(interactiveRepository)
+	interactiveServiceAdapter := client.NewInteractiveServiceAdapter(interactiveService)
+	articleHandler := web.NewArticleHandler(articleService, loggerV1, interactiveServiceAdapter)
 	return articleHandler
 }
 
 // wire.go:
 
-var thirdProviderSet = wire.NewSet(InitDB, InitRedis, InitLogger)
+// 第三方依赖
+var thirdProviderSet = wire.NewSet(
+	InitDB,
+	InitRedis,
+	InitLogger,
+)
 
-var userSvcProviderSet = wire.NewSet(dao.NewUserDAO, cache.NewUserCache, repository.NewUserRepository, service.NewUserService)
+var userSvcProviderSet = wire.NewSet(cache.NewUserCache, dao.NewUserDAO, repository.NewUserRepository, service.NewUserService)
+
+var codeSvcProviderSet = wire.NewSet(cache.NewCodeCache, repository.NewCodeRepository, service.NewCodeService)
+
+var articleSvcProviderSet = wire.NewSet(article.NewArticleDAO, article.NewAuthorDAO, article.NewReaderDAO, cache.NewRedisArticleCache, article2.NewArticleRepository, service.NewArticleService)
+
+var interactiveProviderSet = wire.NewSet(cache2.NewRedisInteractiveCache, dao2.NewInteractiveDAO, repository2.NewInteractiveRepository, service2.NewInteractiveService, client.NewInteractiveServiceAdapter, wire.Bind(new(interactivev1.InteractiveServiceClient), new(*client.InteractiveServiceAdapter)))

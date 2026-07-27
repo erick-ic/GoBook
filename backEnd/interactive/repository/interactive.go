@@ -37,40 +37,12 @@ type InteractiveRepository interface {
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error)
 	// AddCollectItem 保存用户收藏关系，并同步更新数据库和缓存中的收藏数。
 	AddCollectItem(ctx context.Context, biz string, id int64, cid int64, uid int64) error
-	// Liked 判断用户是否仍处于有效点赞状态。
-	Liked(ctx context.Context, biz string, id int64, uid int64) (bool, error)
-	// Collected 判断用户是否收藏了指定业务对象。
-	Collected(ctx context.Context, biz string, id int64, uid int64) (bool, error)
 }
 
 // interactiveRepository 互动仓储实现类
 type interactiveRepository struct {
 	dao   dao.InteractiveDAO     // 互动DAO，操作数据库
 	cache cache.InteractiveCache // 互动缓存，操作 Redis
-}
-
-// Liked 将“记录不存在”转换为正常的 false，其余数据库错误继续上抛。
-func (ir *interactiveRepository) Liked(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
-	_, err := ir.dao.GetLikeInfo(ctx, biz, id, uid)
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, dao.ErrRecordNotFound) {
-		return false, nil
-	}
-	return false, err
-}
-
-// Collected 将“记录不存在”转换为正常的 false，其余数据库错误继续上抛。
-func (ir *interactiveRepository) Collected(ctx context.Context, biz string, id int64, uid int64) (bool, error) {
-	_, err := ir.dao.GetCollectInfo(ctx, biz, id, uid)
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, dao.ErrRecordNotFound) {
-		return false, nil
-	}
-	return false, err
 }
 
 // AddCollectItem 协调收藏关系、聚合收藏数和缓存的更新。
