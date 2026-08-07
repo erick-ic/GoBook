@@ -151,7 +151,7 @@ func (ur *CacheUserRepository) entityToDomain(u dao.User) domain.User {
 	}
 }
 
-// Domain → DAO/、
+// Domain → DAO
 func (ur *CacheUserRepository) domainToEntity(u domain.User) dao.User {
 	return dao.User{
 		Id:            int(u.Id),
